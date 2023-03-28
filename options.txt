@@ -1,0 +1,21 @@
+-in:file
+	-s X.pdb
+	-extra_res_fa  Y.params
+	-extra_res_fa  Z.params
+-run:preserve_header
+-packing
+	-ex1
+	-ex2aro
+	-ex2 
+	-no_optH false
+	-flip_HNQ true
+	-ignore_ligand_chi true
+-enzdes
+	-cstfile RDock.cst
+-parser
+	-protocol ligand_dock.xml
+-out
+	-file:scorefile score.sc
+    -level 100
+	-nstruct 10000	#use in high res dock
+	-overwrite
