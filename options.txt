@@ -1,7 +1,7 @@
 -in:file
-	-s X.pdb
-	-extra_res_fa  Y.params
-	-extra_res_fa  Z.params
+    -s "work_dir/enzyme.pdb"
+    -extra_res_fa  "work_dir/ETI.params"
+    -extra_res_fa  "work_dir/SAH.params"
 -run:preserve_header
 -packing
 	-ex1
@@ -11,11 +11,11 @@
 	-flip_HNQ true
 	-ignore_ligand_chi true
 -enzdes
-	-cstfile RDock.cst
+	-cstfile "work_dir/RDock.cst"
 -parser
-	-protocol ligand_dock.xml
+	-protocol "work_dir/ligand_dock.xml"
 -out
-	-file:scorefile score.sc
+    -file:scorefile score.sc
     -level 100
-	-nstruct 10000	#use in high res dock
-	-overwrite
+    -nstruct 10000	#use in high res dock
+    -overwrite
