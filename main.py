@@ -1,9 +1,11 @@
 import os
+import time
 import argparse
 import shutil
+import pandas as pd
 from pymol import cmd
 import enzy_htp as eh
-from typing import List
+from typing import List, Tuple
 from pathlib import Path
 from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
@@ -13,8 +15,44 @@ import pymol.invocation
 pymol.invocation.parse_args(['pymol', '-q']) # optional, for quiet flag
 pymol2.SingletonPyMOL().start()
 
-ValidatedArgs=namedtuple('ValidatedArgs', 'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 ligand_1_name ligand_2_name constraints')
+ValidatedArgs=namedtuple(
+    'ValidatedArgs', 
+    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 ligand_1_name ligand_2_name constraints n_structures'
+)
 ValidatedArgs.__doc__="""namedtuple() that holds the arguments from the commandline parser after being treated and validated."""
+#TODO(CJ): add documentation for the attributes 
+
+
+def check_mutations( params ) -> List[str]:
+    """Function that checks if the supplied mutations are valid within the EnzyHTP framework. Takes
+    in the parameters namedtuple() from the commandline parser and returns a list() of validated 
+    mutation codes. Assumes that codes are ',' delimited. Will error and exit if any codes are invalid.
+
+    Args:
+        params: The namedtuple() from the ArgumentParser().
+
+    Returns:
+        The list() of validated EnzyHTP codes in correct format as str().
+    """
+    mutations:List[str] = list()
+    
+    if not params.mutations:
+        return mutations
+        
+    error = False
+    invalid_mutations:List[str] = list()
+    
+    for raw_mut in params.mutations.split(','):
+        if not eh.mutation.valid_mutation( raw_mut ):
+            invalid_mutations.append( raw_mut )
+            error = True
+        mutations.append( raw_mut )
+    
+    if error:
+        eh.core._LOGGER.error(f"The following supplied mutations are invalid: {','.join(invalid_mutations)}. Exiting...")
+        exit( 1 )
+    
+    return mutations
 
 
 def check_residue_id( res_id : str ) -> None:
@@ -100,7 +138,12 @@ def parse_args() -> ValidatedArgs:
         type=str,
         help='The path to the constraints file. Not required but must exist if supplied.'
     )
-
+    parser.add_argument(#TODO(CJ): finish this and add checking for valid values
+        '--n_struct',
+        type=int,
+        help='Number of structures to make in the RosettaScripts portion.',
+        default=50
+    )
 
     args = parser.parse_args()
     
@@ -114,13 +157,10 @@ def parse_args() -> ValidatedArgs:
         eh.core._LOGGER.error(f'The supplied pH {args.pH:0.2f} is not in the range [0.00, 14,00]. Exiting...')
         exit( 1 )
 
+    if args.n_struct <= 0.0:
+        eh.core._LOGGER.error(f'The supplied nstruct is {argsn.n_struct}. Must be greater than 0. Exiting...')
+        exit( 1 )
 
-    mutations:List[str] = list()
-    
-    if args.mutations:
-        assert False, "Need to implement this -CJ"
-        #TODO(CJ): parser out the mutations and check that they are valid 
-    
     if args.conformer_engine not in ["BCL", "MOE"]:
         eh.core._LOGGER.error(f'The supplied conformer engine "{args.conformer_engine}" is not supported. Allowed Options are BCL or MOE. Exiting...')
         exit( 1 )
@@ -137,6 +177,7 @@ def parse_args() -> ValidatedArgs:
         eh.core._LOGGER.error("--ligand_1_name is a required argument.")
         exit( 1 )
 
+    mutations:List[str] = check_mutations( args )
 
     if args.ligand_2:
         if not args.ligand_2_name:
@@ -166,7 +207,7 @@ def parse_args() -> ValidatedArgs:
         constraints = args.constraints
         fs.check_file_exists( constraints )
 
-    validated = ValidatedArgs(
+    return ValidatedArgs(
         structure=args.structure,
         pH=args.pH,
         mutations=mutations,
@@ -176,12 +217,9 @@ def parse_args() -> ValidatedArgs:
         ligand_2=ligand_1,
         ligand_1_name=ligand_1_name,
         ligand_2_name=ligand_2_name,
-        constraints=constraints
+        constraints=constraints,
+        n_structures=args.n_struct
     )
-
-
-    return validated
-
 
 def parameterize_ligand( fname ):
     #TODO(CJ): should probably deduce residue name from the file contents
@@ -237,6 +275,10 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
     """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
 
     Args:
+        params:
+        lig_params_1:
+        lig_params_2:
+        work_dir:
         
 
     Returns:
@@ -257,29 +299,38 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
             f"  -extra_res_fa '{lig_params_2}'",
         )
     
-    content.extend("-run:preserve_header")
-    content.append("-packing")
-    content.append("    -ex1")
-    content.append("    -ex2aro")
-    content.append("    -ex2 ")
-    content.append("    -no_optH false")
-    content.append("    -flip_HNQ true")
-    content.append("    -ignore_ligand_chi true")
+    content.extend(
+        [
+            "-run:preserve_header",
+            "-packing",
+            "    -ex1",
+            "    -ex2aro",
+            "    -ex2 ",
+            "    -no_optH false",
+            "    -flip_HNQ true",
+            "    -ignore_ligand_chi true",
+        ]
+    )
 
-    if constraints:
-        content.extend(["-enzdes",f"    -cstfile '{params.constraints}'")
+    if params.constraints:
+        content.extend(
+            [
+                "-enzdes",
+                f"    -cstfile '{params.constraints}'"
+            ]
+        )
 
     content.extend(
         [
             "-parser",
             "   -protocol ligand_dock.xml", #TODO(CJ): fix this
             "-out",
-           f"   -file:scorefile score.sc", #TODO(CJ): fix this
+           f"   -file:scorefile 'score.sc'", 
             "   -level 700",
-            "   -nstruct 50", #TODO(CJ): change this
+           f"   -nstruct {params.n_structures}", #TODO(CJ): change this
             "   -overwrite",
-           f"   -path",
-           f"       -all work_dir/complexes", #TODO(CJ): fix this
+            "   -path",
+           f"       -all '{work_dir}/complexes'",
 
         ]
     )
@@ -288,7 +339,8 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
 
     fs.write_lines( fname, content )
 
-    return fname
+    scorefile:str = f"{work_dir}/complexes/score.sc"
+    return (fname, scorefile)
 
 
 def protonate_ligand( molfile : str ) -> str:
@@ -298,8 +350,33 @@ def protonate_ligand( molfile : str ) -> str:
     protonated = eh.interface.moe.protonate( local )
     return eh.interface.pymol.convert( protonated, new_ext='.sdf') 
 
-def main( params : ValidatedArgs ):
+def log_elapsed_time( elapsed : int ) -> None:
+    """ """ 
+    days, hours, minutes, seconds = 0, 0, 0, 0
+    
+    minutes_denom = 60
+    hours_denom = minutes_denom*60
+    days_denom = hours_denom*24
+    
+    if elapsed >= days_denom:
+        days = int(elapsed / days_denom)
+        elapsed //= days_denom
+
+    if elapsed >= hours_denom:
+        hours = int(elapsed / hours_denom)
+        elapsed //= hours_denom
+
+    if elapsed >= minutes_denom:
+        minutes = int(elapsed / minutes_denom)
+        elapsed //= minutes_denom
+
+    seconds = int(elapsed)
+
+    eh.core._LOGGER.info(f"Elapsed time: {days} days {hours} hours {minutes} minutes {seconds} seconds")
+
+def main( params : ValidatedArgs ) -> None:
     """ Main routine """
+    start = time.time()
     #TODO(CJ): give option to give the conformer files ahead of time 
     #1. Mutate if necessary
     if params.mutations:
@@ -308,20 +385,19 @@ def main( params : ValidatedArgs ):
                 mutations=params.mutation,
                 engine='rosetta'
             )
+        #TODO(CJ): I think i need to fast relax here?                
 
-    #2. protonate ligands/enzyme
-    #2.a protonated the structure
     parser = eh.structure.PDBParser()
     structure = parser.get_structure( params.structure )
     structure = eh.preparation.protonate_stru( structure )
-    #2.b protonating the ligands 
+    
     ligand_files:List[str] = list()
 
     ligand_1, ligand_2 = str(), str()
 
-    ligand_1 = protonate_ligand( params.ligand_1 )
-    ligand_1_conformers = eh.interface.bcl.generate_conformers( ligand_1 )
-    ligand_1_parameters = eh.interface.rosetta.parameterize_ligand( ligand_1, params.ligand_1_name )
+    ligand_1:str = protonate_ligand( params.ligand_1 )
+    ligand_1_conformers:str = eh.interface.bcl.generate_conformers( ligand_1 )
+    ligand_1_parameters:str = eh.interface.rosetta.parameterize_ligand( ligand_1, params.ligand_1_name )
 
     if params.ligand_2:
         ligand_2 = protonate_ligand( params.ligand_2 )
@@ -329,10 +405,27 @@ def main( params : ValidatedArgs ):
         ligand_2_parameters = eh.interface.rosetta.parameterize_ligand( ligand_2, params.ligand_2_name )
 
 
-    options_file:str = make_options_file( params, lig_params_1=ligand_1_parameters, lig_2_params=ligand_2_parameters, work_dir=path(params.structure).parent ) 
-
+    (options_file, score_file) = make_options_file( params, lig_params_1=ligand_1_parameters[0], lig_params_2=ligand_2_parameters[0], work_dir=Path(params.structure).parent ) 
     
-    #eh.interface.rosetta.run_rosetta_scripts(
+    fs.safe_rm( score_file )    
+
+    eh.interface.rosetta.run_rosetta_scripts( [f"@{options_file}"] )
+    df:pd.DataFrame = eh.interface.rosetta.parse_score_file( score_file )
+
+    #show top 5
+    df.sort_values(by='total_score',inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    idx = min(20, len(df))    
+    eh.core._LOGGER.info(f"EnzyRCD run complete. Top {idx} structures are:")
+    eh.core._LOGGER.info(f"No. \t    REU\t Structure")
+    
+    for i, row in df.iterrows():
+        if i == idx:
+            break
+        eh.core._LOGGER.info(f"{i+1: 3}\t{row.total_score:6.2f}\t{row.description}")
+
+    elapsed = time.time() - start
+    log_elapsed_time( elapsed )
 
 if __name__ == '__main__':
     main( parse_args() ) 
