@@ -1,12 +1,13 @@
 import os
 import time
-import argparse
 import shutil
+import argparse
 import pandas as pd
-from pymol import cmd
 import enzy_htp as eh
-from typing import List, Tuple
+from rdkit import Chem
 from pathlib import Path
+from pymol import cmd, stored
+from typing import List, Tuple
 from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
 
@@ -22,15 +23,25 @@ ValidatedArgs=namedtuple(
 ValidatedArgs.__doc__="""namedtuple() that holds the arguments from the commandline parser after being treated and validated."""
 #TODO(CJ): add documentation for the attributes 
 
+def make_df( sele:str ) -> pd.DataFrame:
+    stored.holder = []
+    
+    cmd.iterate_state(-1, sele, 'stored.holder.append( (name, elem, x, y, z, ID, chain, resn ) )')
+    
+    df =  pd.DataFrame(
+        columns='aname elem x y z ID chain resn'.split(),
+        data=stored.holder
+    )
+    df.sort_values(by='ID', inplace=True)
+    return df.reset_index(drop=True)
+
 
 def check_mutations( params ) -> List[str]:
     """Function that checks if the supplied mutations are valid within the EnzyHTP framework. Takes
     in the parameters namedtuple() from the commandline parser and returns a list() of validated 
     mutation codes. Assumes that codes are ',' delimited. Will error and exit if any codes are invalid.
-
     Args:
         params: The namedtuple() from the ArgumentParser().
-
     Returns:
         The list() of validated EnzyHTP codes in correct format as str().
     """
@@ -58,13 +69,10 @@ def check_mutations( params ) -> List[str]:
 def check_residue_id( res_id : str ) -> None:
     """Helper function that checks if a supplied string is a valid residue id in the PDB format. Supplied
     code must: 1) be three characters in length and 2) be all uppercase. Strips whitespace.
-
     Args:
         res_id: The residue id to check as a str().
-
     Returns:
         Nothing.
-
     """ 
     res_id = ''.join(res_id.split())
 
@@ -78,7 +86,6 @@ def check_residue_id( res_id : str ) -> None:
 
 def parse_args() -> ValidatedArgs:
     """Commandline argument parser. Performs basic checks on the inputs and slightly rearranges them.
-
     Returns:
         A namedtuple with validated and treated arguments from the commandline.
     """
@@ -214,7 +221,7 @@ def parse_args() -> ValidatedArgs:
         conformer_engine=args.conformer_engine,
         n_conformers=args.n_conformers,
         ligand_1=ligand_1,
-        ligand_2=ligand_1,
+        ligand_2=ligand_2,
         ligand_1_name=ligand_1_name,
         ligand_2_name=ligand_2_name,
         constraints=constraints,
@@ -273,17 +280,14 @@ def parameterize_ligand( fname ):
 
 def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:str=None, work_dir:str=None ) -> str:
     """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
-
     Args:
         params:
         lig_params_1:
         lig_params_2:
         work_dir:
         
-
     Returns:
         The path to the options file as a str().
-
     """
     if not work_dir:
         work_dir = str(Path(params.structure).parent)
@@ -323,10 +327,10 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
     content.extend(
         [
             "-parser",
-            "   -protocol ligand_dock.xml", #TODO(CJ): fix this
+            "   -protocol xmls/lig_dock2.xml", #TODO(CJ): fix this
             "-out",
            f"   -file:scorefile 'score.sc'", 
-            "   -level 700",
+            "   -level 200",
            f"   -nstruct {params.n_structures}", #TODO(CJ): change this
             "   -overwrite",
             "   -path",
@@ -341,6 +345,49 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
 
     scorefile:str = f"{work_dir}/complexes/score.sc"
     return (fname, scorefile)
+
+def fix_conformers( template: str, conformers:str) -> str:
+    """ """
+    cmd.delete('all')
+    cmd.load(template)
+    template_df:pd.DataFrame = make_df('all')
+    cmd.delete('all')
+
+    cmd.load(conformers)
+    
+    original = cmd.get_object_list()
+    assert len(original) == 1
+    original = original[0]
+    content:List[str]=list()
+    cmd.split_states('all')
+    for oidx, oo in enumerate(cmd.get_object_list()):
+        if oo == original:
+            continue
+        df = make_df( oo )
+        assert len(df) == len(template_df), f"{len(df)} {len(template_df)}"
+        for (tidx, trow), (idx, row) in zip(template_df.iterrows(), df.iterrows()):
+            assert trow.elem == row.elem
+            cmd.alter(f"{oo} and ID {row.ID}", f"name='{trow.aname}'")
+            cmd.alter(f"{oo} and ID {row.ID}", f"chain='{trow.chain}'")
+            cmd.alter(f"{oo} and ID {row.ID}", f"resn='{trow.resn}'")
+
+        temp_fname = f"state_{oidx}.pdb"
+        cmd.save(temp_fname, oo )
+
+        for ll in fs.lines_from_file( temp_fname ):
+            if ll.startswith('HETATM') or ll.startswith('ATOM'):
+                content.append( ll )
+        
+        content.append('TER')
+        fs.safe_rm( temp_fname )
+
+    content.pop()
+    content.append('END')
+
+    outfile = Path(conformers).with_suffix('.pdb')
+    fs.write_lines(outfile, content)
+
+    return str( outfile )
 
 
 def protonate_ligand( molfile : str ) -> str:
@@ -374,6 +421,21 @@ def log_elapsed_time( elapsed : int ) -> None:
 
     eh.core._LOGGER.info(f"Elapsed time: {days} days {hours} hours {minutes} minutes {seconds} seconds")
 
+
+def kekulize( in_file:str )->str:   
+    """ """ 
+    mol2_infile = Path(in_file).with_suffix('.mol2')
+    eh.interface.pymol.convert( in_file, new_ext='.mol2')
+    mol = Chem.MolFromMol2File(str(mol2_infile), removeHs=False)
+    mol_file = Path(in_file).with_suffix('.mol')
+    Chem.MolToMolFile(mol, str(mol_file),  kekulize=True) 
+    eh.interface.pymol.convert( mol_file, new_ext='.sdf')
+    #w = Chem.SDWriter(in_file )
+    #w.SetKekulize(True)
+    #w.write(mol)
+    #w.close()
+    #return in_file
+
 def main( params : ValidatedArgs ) -> None:
     """ Main routine """
     start = time.time()
@@ -396,16 +458,25 @@ def main( params : ValidatedArgs ) -> None:
     ligand_1, ligand_2 = str(), str()
 
     ligand_1:str = protonate_ligand( params.ligand_1 )
-    ligand_1_conformers:str = eh.interface.bcl.generate_conformers( ligand_1 )
     ligand_1_parameters:str = eh.interface.rosetta.parameterize_ligand( ligand_1, params.ligand_1_name )
+    kekulize( ligand_1 )
+    ligand_1_conformers:str = eh.interface.bcl.generate_conformers( ligand_1 )
+    ligand_1_conformers:str = fix_conformers( ligand_1_parameters[1], ligand_1_conformers)
 
     if params.ligand_2:
-        ligand_2 = protonate_ligand( params.ligand_2 )
-        ligand_2_conformers = eh.interface.bcl.generate_conformers( ligand_2 )
-        ligand_2_parameters = eh.interface.rosetta.parameterize_ligand( ligand_2, params.ligand_2_name )
+        ligand_2:str = protonate_ligand( params.ligand_2 )
+        ligand_2_parameters:str = eh.interface.rosetta.parameterize_ligand( ligand_2, params.ligand_2_name )
+        kekulize( ligand_2 )
+        ligand_2_conformers:str = eh.interface.bcl.generate_conformers( ligand_2 )
+        ligand_2_conformers:str = fix_conformers( ligand_2_parameters[1], ligand_2_conformers)
 
 
-    (options_file, score_file) = make_options_file( params, lig_params_1=ligand_1_parameters[0], lig_params_2=ligand_2_parameters[0], work_dir=Path(params.structure).parent ) 
+    (options_file, score_file) = make_options_file(
+            params,
+            lig_params_1=ligand_1_parameters[0],
+            lig_params_2=ligand_2_parameters[0],
+            work_dir=Path(params.structure).parent
+        ) 
     
     fs.safe_rm( score_file )    
 
@@ -429,4 +500,3 @@ def main( params : ValidatedArgs ) -> None:
 
 if __name__ == '__main__':
     main( parse_args() ) 
-
