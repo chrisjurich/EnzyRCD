@@ -294,7 +294,7 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
 
     content:List[str] = [
         "-in:file",
-        f"  -s '{params.structure}'",
+        f"  -s '{Path(params.structure).name}'",
         f"  -extra_res_fa '{lig_params_1}'",
     ]
 
@@ -320,21 +320,21 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
         content.extend(
             [
                 "-enzdes",
-                f"    -cstfile '{params.constraints}'"
+                f"    -cstfile '{Path(params.constraints).name}'"
             ]
         )
 
     content.extend(
         [
             "-parser",
-            "   -protocol xmls/lig_dock2.xml", #TODO(CJ): fix this
+            "   -protocol ../xmls/lig_dock2.xml", #TODO(CJ): fix this
             "-out",
            f"   -file:scorefile 'score.sc'", 
             "   -level 200",
            f"   -nstruct {params.n_structures}", #TODO(CJ): change this
             "   -overwrite",
             "   -path",
-           f"       -all '{work_dir}/complexes'",
+           f"       -all './complexes'",
 
         ]
     )
@@ -462,6 +462,8 @@ def main( params : ValidatedArgs ) -> None:
     kekulize( ligand_1 )
     ligand_1_conformers:str = eh.interface.bcl.generate_conformers( ligand_1 )
     ligand_1_conformers:str = fix_conformers( ligand_1_parameters[1], ligand_1_conformers)
+    shutil.move(ligand_1_parameters[0], Path('work_dir') / ligand_1_parameters[0] )
+    #TODO(CJ): add conformers to bottom of files
 
     if params.ligand_2:
         ligand_2:str = protonate_ligand( params.ligand_2 )
@@ -469,20 +471,28 @@ def main( params : ValidatedArgs ) -> None:
         kekulize( ligand_2 )
         ligand_2_conformers:str = eh.interface.bcl.generate_conformers( ligand_2 )
         ligand_2_conformers:str = fix_conformers( ligand_2_parameters[1], ligand_2_conformers)
+        shutil.move(ligand_2_parameters[0], Path('work_dir') / ligand_2_parameters[0] )
 
 
     (options_file, score_file) = make_options_file(
             params,
             lig_params_1=ligand_1_parameters[0],
-            lig_params_2=ligand_2_parameters[0],
+            lig_params_2=ligand_2_parameters[0] if params.ligand_2 else None,
             work_dir=Path(params.structure).parent
         ) 
     
+     
+    
     fs.safe_rm( score_file )    
+    fs.safe_rm( ligand_1_parameters[1] )    
+    fs.safe_rm( ligand_2_parameters[1] )    
+    start_dir:str = os.getcwd()
 
-    eh.interface.rosetta.run_rosetta_scripts( [f"@{options_file}"] )
+    os.chdir( 'work_dir' ) #TODO(CJ): update this 
+    eh.interface.rosetta.run_rosetta_scripts( [f"@options.txt"] )
+    os.chdir( start_dir )
+
     df:pd.DataFrame = eh.interface.rosetta.parse_score_file( score_file )
-
     #show top 5
     df.sort_values(by='total_score',inplace=True)
     df.reset_index(drop=True, inplace=True)
@@ -494,7 +504,8 @@ def main( params : ValidatedArgs ) -> None:
         if i == idx:
             break
         eh.core._LOGGER.info(f"{i+1: 3}\t{row.total_score:6.2f}\t{row.description}")
-
+    
+    df.to_csv(Path(score_file).with_suffix('.csv'), index=False)
     elapsed = time.time() - start
     log_elapsed_time( elapsed )
 
