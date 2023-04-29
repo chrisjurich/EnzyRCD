@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import json
+import shutil
+import pandas as pd
+import enzy_htp as eh
+from pathlib import Path
+from enzy_htp.core import file_system as fs
+
+
+
+df = pd.read_csv('./data/transferases.csv')
+
+ecs = []
+for i, row in df.iterrows():
+    WT_dir = f"{row.PDB_ID}_WT"
+    fs.safe_mkdir( WT_dir )
+    scaffold = Path('./scaffolds/') / f"{row.PDB_ID}_su.pdb"
+    EC = row.ec_number
+    ecs.append(EC)
+    try:
+        assert scaffold.exists(), scaffold
+    except:
+        continue
+
+    
+    shutil.copy(scaffold, Path(WT_dir) / 'enzyme.pdb')
+
+
+for ss in sorted(list(set(ecs))):
+    print(ss)

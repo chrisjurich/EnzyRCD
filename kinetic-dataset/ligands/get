@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+from pymol import cmd
+from pathlib import Path
+
+
+for code in "152 ACO SAM GLN GLC ADN ADP ATP PPI RIB".split():
+    if Path(f"{code}.mol2").exists():
+        continue
+    cmd.delete('all')
+    cmd.fetch(code)
+    cmd.save()
+    cmd.delete('all')
+
+
+for pp in Path('.').glob('???.mol'):
+    cmd.delete('all')
+    cmd.load(pp)
+    cmd.save(pp.with_suffix('.mol2'))
+    cmd.delete('all')
+    pp.unlink()
+
+
+for pp in Path('.').glob('???.cif'):
+    pp.unlink()

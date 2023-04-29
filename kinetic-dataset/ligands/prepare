@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+import os
+import json
+import numpy as np
+import pandas as pd
+import enzy_htp as eh
+from pymol import cmd
+from rdkit import Chem
+from pathlib import Path
+
+def kekulize( in_file:str )->str:   
+    """ """ 
+    mol2_infile = Path(in_file).with_suffix('.mol2')
+    eh.interface.pymol.convert( in_file, new_ext='.mol2')
+    mol = Chem.MolFromMol2File(str(mol2_infile), removeHs=False)
+    mol_file = Path(in_file).with_suffix('.mol')
+    Chem.MolToMolFile(mol, str(mol_file),  kekulize=True) 
+    return eh.interface.pymol.convert( mol_file, new_ext='.sdf')
+
+
+df = pd.read_csv('../data/transferases.csv')
+ph_mapper = dict()
+for i, row in df.iterrows():
+    ph = row.pH
+    if np.isnan(ph):
+        ph = 7.0
+    ph_mapper[row.ec_number] = ph
+
+data = json.load(open('../data/substrates.json', 'r'))
+mapper = dict()
+
+for ec, sub_dict in data.items():
+    for lig, code in sub_dict.items():
+        if not code:
+            continue
+        mapper[code] = ec
+
+#TODO(CJ): need to get the actual pH's for each of these
+
+#TODO(CJ): guess number of conformers needed given DOF -> calculated DOF
+
+for ligand in sorted(Path('.').glob('???.mol2')):
+    print(ligand) 
+    
+    pH = ph_mapper[mapper[ligand.stem]]
+    ligand_file=f"{ligand.stem}_ph_{pH:.2f}.mol2"
+    
+    if not Path(ligand_file).exists():
+        cmd.delete('all')
+        cmd.load(ligand)
+        cmd.remove('hydrogens')
+        cmd.save(ligand_file)
+    
+        eh.interface.moe.protonate(ligand_file, outfile=ligand_file, pH=pH)
+        ligand_file = eh.interface.pymol.convert(ligand_file, new_ext='.sdf')
+
+    ligand_file = str(Path(ligand_file).with_suffix('.sdf'))
+    #ligand_file = kekulize(ligand_file)
+    conformer_file = f"{Path(ligand_file).stem}_conformers.sdf"
+    if os.stat( conformer_file ).st_size == 0:
+        eh.interface.bcl.generate_conformers(ligand_file)
