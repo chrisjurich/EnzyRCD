@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 import os
-import time
+import sys
+import time 
 import shutil
 import argparse
+import contextlib
+import numpy as np
 import pandas as pd
 import enzy_htp as eh
 from rdkit import Chem
 from pathlib import Path
 from pymol import cmd, stored
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
 
@@ -17,12 +20,38 @@ import pymol.invocation
 pymol.invocation.parse_args(['pymol', '-q']) # optional, for quiet flag
 pymol2.SingletonPyMOL().start()
 
+#TODO(CJ): need to add more attributes, I think including a work_dir structure
+
+ROOT_DIR:str=str(Path(__file__).parent.absolute())
+""" """
+
 ValidatedArgs=namedtuple(
     'ValidatedArgs', 
-    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 ligand_1_name ligand_2_name constraints n_structures'
+    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 ligand_1_name ligand_2_name constraints n_structures protonate_structure work_dir top_n'
 )
-ValidatedArgs.__doc__="""namedtuple() that holds the arguments from the commandline parser after being treated and validated."""
-#TODO(CJ): add documentation for the attributes 
+ValidatedArgs.__doc__="""namedtuple() that holds the arguments from the commandline parser after being treated and validated. Has the below 
+attributes:
+    
+    - structure: str path to the structure to do analysis on
+    - mutations: the mutations to apply to the structure as str()'s (optional)
+    - pH: the pH to protonate the system at
+    - conformer_engine: the name of the engine to build conformers of the ligands with
+    - n_conformers: the number of conformers to make for each ligand
+    - ligand_1:
+
+
+"""
+#TODO(CJ): add documentation for the attributes -> finish this
+
+def redirect_stdout():
+    #print "Redirecting stdout"
+    sys.stdout.flush() # <--- important when redirecting to files
+    newstdout = os.dup(1)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 1)
+    os.close(devnull)
+    sys.stdout = os.fdopen(newstdout, 'w')
+
 
 def make_df( sele:str ) -> pd.DataFrame:
     stored.holder = []
@@ -146,15 +175,33 @@ def parse_args() -> ValidatedArgs:
         type=str,
         help='The path to the constraints file. Not required but must exist if supplied.'
     )
-    parser.add_argument(#TODO(CJ): finish this and add checking for valid values
+    parser.add_argument(
         '--n_struct',
         type=int,
         help='Number of structures to make in the RosettaScripts portion.',
         default=50
     )
+    parser.add_argument(
+        '--protonate_structure',
+         type=bool,
+         default=True,
+         help='Whether or not the structure should be protonated'
+    )
+    parser.add_argument(
+        '--work_dir',
+        type=str,
+        default='work_dir',
+        help='TODO'
+    )
+
+    parser.add_argument(
+        '--top_n',
+        type=int,
+        default=20,
+        help='TODO' #TODO(CJ): documentation and validation
+    )
 
     args = parser.parse_args()
-    
     fs.check_file_exists( args.structure )
 
     if not Path(args.structure).suffix == '.pdb':
@@ -226,58 +273,11 @@ def parse_args() -> ValidatedArgs:
         ligand_1_name=ligand_1_name,
         ligand_2_name=ligand_2_name,
         constraints=constraints,
-        n_structures=args.n_struct
+        n_structures=args.n_struct,
+        protonate_structure=args.protonate_structure,
+        work_dir=args.work_dir,
+        top_n=args.top_n
     )
-
-def parameterize_ligand( fname ):
-    #TODO(CJ): should probably deduce residue name from the file contents
-    fpath = Path(fname)
-    prefix=fpath.parent / fpath.stem.replace('_conformers','') #TODO(CJ): check that it replaces the one at the end
-    
-    cmd.delete('all')
-    cmd.load(fpath)
-    cmd.split_states('all')
-    
-    print(fname)
-    
-    name = fname.stem[:3]
-    param_file = f"{name}.params"
-    fs.safe_rm( param_file )
-
-    cmd_str=f"$ROSETTA3/source/scripts/python/public/molfile_to_params.py {fname} --name={name} >/dev/null"
-    print(cmd_str)
-    result = os.system(cmd_str)
-    if result:
-        #TODO(CJ): add the error stuff here
-        pass
-    
-    lig_pdbs = sorted(Path('.').glob(f'{name}_????.pdb'))
-    shutil.copy(lig_pdbs[0],fpath.parent / f"{name}_base.pdb")
-    conformers_lines:List[str] = list()
-
-    for lp in lig_pdbs:
-        for ll in fs.lines_from_file(lp):
-            if not ll.startswith('ATOM') and not ll.startswith('HETATM'):
-                continue
-            conformers_lines.append( ll )
-
-            fs.safe_rm( lp )
-
-        conformers_lines.append('TER')
-    
-    conformers_lines.append('END')
-
-    conf_file = fpath.parent/f"{name}_conformers.pdb"
-    fs.write_lines( conf_file, conformers_lines )
-    
-    pfile_lines = fs.lines_from_file( param_file )
-    pfile_lines.append(f"PDB_ROTATMERS {conf_file}\n")
-
-    fs.write_lines( param_file, pfile_lines )
-
-    shutil.move(param_file, fpath.parent / param_file )
-
-    return param_file, conf_file 
 
 def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:str=None, work_dir:str=None ) -> str:
     """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
@@ -290,18 +290,20 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
     Returns:
         The path to the options file as a str().
     """
+    work_dir = params.work_dir
+    
     if not work_dir:
         work_dir = str(Path(params.structure).parent)
 
     content:List[str] = [
         "-in:file",
         f"  -s '{Path(params.structure).name}'",
-        f"  -extra_res_fa '{lig_params_1}'",
+        f"  -extra_res_fa '{Path(lig_params_1).absolute()}'",
     ]
 
     if lig_params_2:
         content.append(
-            f"  -extra_res_fa '{lig_params_2}'",
+            f"  -extra_res_fa '{Path(lig_params_2).absolute()}'",
         )
     
     content.extend(
@@ -321,21 +323,21 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
         content.extend(
             [
                 "-enzdes",
-                f"    -cstfile '{Path(params.constraints).name}'"
+                f"    -cstfile '{Path(params.constraints).absolute()}'"
             ]
         )
 
     content.extend(
         [
             "-parser",
-            "   -protocol ../xmls/lig_dock2.xml", #TODO(CJ): fix this
+           f"   -protocol {ROOT_DIR}/xmls/lig_dock2.xml", #TODO(CJ): fix this
             "-out",
            f"   -file:scorefile 'score.sc'", 
             "   -level 200",
            f"   -nstruct {params.n_structures}", #TODO(CJ): change this
             "   -overwrite",
             "   -path",
-           f"       -all './complexes'",
+           f"       -all './complexes'", 
 
         ]
     )
@@ -343,24 +345,28 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
     fname = Path(work_dir)/"options.txt"
 
     fs.write_lines( fname, content )
+    
+    fs.safe_mkdir( f"{work_dir}/complexes/" )
 
     scorefile:str = f"{work_dir}/complexes/score.sc"
     return (fname, scorefile)
 
-def fix_conformers( template: str, conformers:str) -> str:
+def fix_conformers( template: str, conformers:str, res_code:str) -> str:
     """ """
     cmd.delete('all')
     cmd.load(template)
     template_df:pd.DataFrame = make_df('all')
     cmd.delete('all')
-
-    cmd.load(conformers)
     
+    cmd.load(conformers)
     original = cmd.get_object_list()
     assert len(original) == 1
     original = original[0]
     content:List[str]=list()
+    #TODO(CJ): figure out a way to get rid of the warnings
+    redirect_stdout()
     cmd.split_states('all')
+    
     for oidx, oo in enumerate(cmd.get_object_list()):
         if oo == original:
             continue
@@ -370,7 +376,7 @@ def fix_conformers( template: str, conformers:str) -> str:
             assert trow.elem == row.elem
             cmd.alter(f"{oo} and ID {row.ID}", f"name='{trow.aname}'")
             cmd.alter(f"{oo} and ID {row.ID}", f"chain='{trow.chain}'")
-            cmd.alter(f"{oo} and ID {row.ID}", f"resn='{trow.resn}'")
+            cmd.alter(f"{oo} and ID {row.ID}", f"resn='{res_code}'")
 
         temp_fname = f"state_{oidx}.pdb"
         cmd.save(temp_fname, oo )
@@ -381,13 +387,12 @@ def fix_conformers( template: str, conformers:str) -> str:
         
         content.append('TER')
         fs.safe_rm( temp_fname )
-
+    
     content.pop()
     content.append('END')
 
     outfile = Path(conformers).with_suffix('.pdb')
     fs.write_lines(outfile, content)
-
     return str( outfile )
 
 
@@ -423,23 +428,155 @@ def log_elapsed_time( elapsed : int ) -> None:
     eh.core._LOGGER.info(f"Elapsed time: {days} days {hours} hours {minutes} minutes {seconds} seconds")
 
 
-def kekulize( in_file:str )->str:   
+def log_results( score_file:str, top_n:int) -> str:
+    """ """
+    df:pd.DataFrame = eh.interface.rosetta.parse_score_file( score_file )
+    #show top 5
+    df.sort_values(by='total_score',inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    idx = min(top_n, len(df))    
+    eh.core._LOGGER.info(f"EnzyRCD run complete. Top {idx} structures are:")
+    eh.core._LOGGER.info(f"No. \t    REU\t Structure")
+    
+    for i, row in df.iterrows():
+        if i == idx:
+            break
+        eh.core._LOGGER.info(f"{i+1: 3}\t{row.total_score:6.2f}\t{row.description}")
+   
+    outfile:str=Path(score_file).with_suffix('.csv')
+    df.to_csv(outfile, index=False)
+    return outfile
+
+
+def parse_mol2( fname: str ):
+
+    fh = open(fname, 'r')
+    lines = fh.read().splitlines()
+    fh.close()
+
+    lines.reverse()
+
+    temp = None
+
+    atom_mapper = dict()
+    connection_mapper = defaultdict( list )
+
+    while lines:
+
+        temp = lines.pop()
+
+        if not temp or temp.startswith('#'):
+            temp = lines.pop()
+            continue
+
+        if temp.find('@<TRIPOS>ATOM') != -1:
+            temp = lines.pop()
+            while temp.find('@') == -1:
+                (num,name,_)=temp.split(maxsplit=2)
+                atom_mapper[int(num)] = name
+                temp = lines.pop()
+
+
+        if temp.find('@<TRIPOS>BOND') != -1:
+            temp = lines.pop()
+            while temp.find('@') == -1:
+                (_,n1,n2,btype)=temp.split()
+                n1, n2 = int(n1), int(n2)
+                connection_mapper[n1].append( (n2, btype) )
+                connection_mapper[n2].append( (n1, btype) )
+                temp = lines.pop()
+
+    return (atom_mapper, connection_mapper)
+
+
+def no_aromatics( bonds ):
+    for (prtner, btype) in bonds:
+        if btype == 'ar':
+            return False
+    return True
+
+def is_dead_end( anum, cmapper ):
+    return len(cmapper[anum]) == 1
+
+
+def dead_end_aromatics_only(
+        anum,
+        cmapper
+    ):
+    for (nn, btype) in cmapper[anum]:
+        if btype != 'ar':
+            continue
+        if not is_dead_end( nn, cmapper ):
+            return False
+
+    return True
+
+
+def kekulize( in_file:str, out_format:str='.sdf' )->str:   
     """ """ 
-    mol2_infile = Path(in_file).with_suffix('.mol2')
-    eh.interface.pymol.convert( in_file, new_ext='.mol2')
-    mol = Chem.MolFromMol2File(str(mol2_infile), removeHs=False)
-    mol_file = Path(in_file).with_suffix('.mol')
-    Chem.MolToMolFile(mol, str(mol_file),  kekulize=True) 
-    eh.interface.pymol.convert( mol_file, new_ext='.sdf')
-    #w = Chem.SDWriter(in_file )
-    #w.SetKekulize(True)
-    #w.write(mol)
-    #w.close()
-    #return in_file
+
+    mol = Chem.MolFromMol2File(str(in_file),removeHs=False, cleanupSubstructures=False, sanitize=False)
+    
+    holder = defaultdict( list )
+    for bb in mol.GetBonds():
+        if bb.IsInRing() or not bb.GetIsAromatic():
+            continue
+        holder[bb.GetBeginAtomIdx()].append(bb.GetEndAtomIdx())
+    
+    
+    doubles = list()
+    
+    for kk, vv in holder.items():
+        doubles.append(( kk, np.random.choice( vv ) ))
+    
+    for bidx in range(mol.GetNumBonds()):
+        bb = mol.GetBondWithIdx( bidx )
+    
+        if bb.IsInRing() or not bb.GetIsAromatic():
+            continue
+        key = ( bb.GetBeginAtomIdx(), bb.GetEndAtomIdx() )
+    
+        mol.GetAtomWithIdx(key[0]).SetIsAromatic(False)
+        mol.GetAtomWithIdx(key[1]).SetIsAromatic(False)
+    
+        if key in doubles:
+            bb.SetBondType( Chem.BondType.DOUBLE )
+        else:
+            bb.SetBondType( Chem.BondType.SINGLE )
+   
+
+    outfile = Path(in_file).with_suffix(out_format )
+    w = Chem.SDWriter(str(outfile))
+    w.SetKekulize( True )
+    w.write(mol)
+    w.close()
+
+    return str( outfile )
+
+def prepare_ligand( molfile:str, res_code:str, params:ValidatedArgs ) -> Dict[str,str]:
+    """ """
+    file_mapper:Dict[str,str] = { 'input': str(molfile) }
+    file_mapper['deprotonated'] = eh.interface.pymol.de_protonate( file_mapper['input'] )
+    file_mapper['protonated'] = eh.interface.moe.protonate( file_mapper['deprotonated'] )
+    (params_file, pdb_file)  = eh.interface.rosetta.parameterize_ligand( file_mapper['protonated'], res_code )
+    file_mapper['params'] = params_file
+    file_mapper['pdb'] = pdb_file
+    file_mapper['kekulized'] = kekulize(file_mapper['protonated'])
+    file_mapper['conformers'] = eh.interface.bcl.generate_conformers( file_mapper['kekulized'] )
+    file_mapper['conformer_library'] = fix_conformers( file_mapper['pdb'], file_mapper['conformers'], res_code)
+    file_mapper['conformer_library'] = shutil.move(file_mapper['conformer_library'], Path(params.work_dir) / Path(file_mapper['conformer_library']).name)
+    eh.interface.rosetta.add_conformers( file_mapper['params'], file_mapper['conformer_library'] )
+
+    file_mapper['params'] = shutil.move(file_mapper['params'], Path(params.work_dir) / Path(file_mapper['params']).name )
+    #TODO(CJ): need to move the conformers here and set them up correctly
+    return file_mapper
+
 
 def main( params : ValidatedArgs ) -> None:
     """ Main routine """
+    #TODO(CJ): actually use the pH that is supplied
     start = time.time()
+    fs.safe_mkdir( params.work_dir )
     #TODO(CJ): give option to give the conformer files ahead of time 
     #1. Mutate if necessary
     if params.mutations:
@@ -450,63 +587,43 @@ def main( params : ValidatedArgs ) -> None:
             )
         #TODO(CJ): I think i need to fast relax here?                
 
+
+    #TODO(CJ): make the work_dir if it doesnt exist
     parser = eh.structure.PDBParser()
     structure = parser.get_structure( params.structure )
-    structure = eh.preparation.protonate_stru( structure )
     
-    ligand_files:List[str] = list()
+    if params.protonate_structure:
+        structure = eh.preparation.protonate_stru( structure )
 
-    ligand_1, ligand_2 = str(), str()
+    #TODO(CJ): need to do relaxation here and also write out the structure
 
-    ligand_1:str = protonate_ligand( params.ligand_1 )
-    ligand_1_parameters:str = eh.interface.rosetta.parameterize_ligand( ligand_1, params.ligand_1_name )
-    kekulize( ligand_1 )
-    ligand_1_conformers:str = eh.interface.bcl.generate_conformers( ligand_1 )
-    ligand_1_conformers:str = fix_conformers( ligand_1_parameters[1], ligand_1_conformers)
-    shutil.move(ligand_1_parameters[0], Path('work_dir') / ligand_1_parameters[0] )
-    #TODO(CJ): add conformers to bottom of files
+    l1_fm:Dict[str,str] = prepare_ligand( params.ligand_1, 'L01', params )
 
     if params.ligand_2:
-        ligand_2:str = protonate_ligand( params.ligand_2 )
-        ligand_2_parameters:str = eh.interface.rosetta.parameterize_ligand( ligand_2, params.ligand_2_name )
-        kekulize( ligand_2 )
-        ligand_2_conformers:str = eh.interface.bcl.generate_conformers( ligand_2 )
-        ligand_2_conformers:str = fix_conformers( ligand_2_parameters[1], ligand_2_conformers)
-        shutil.move(ligand_2_parameters[0], Path('work_dir') / ligand_2_parameters[0] )
+        l2_fm:Dict[str,str] = prepare_ligand( params.ligand_2, 'L02', params )
+
+
+    #TODO(CJ): this is where the ligand placement will go
 
 
     (options_file, score_file) = make_options_file(
             params,
-            lig_params_1=ligand_1_parameters[0],
-            lig_params_2=ligand_2_parameters[0] if params.ligand_2 else None,
+            lig_params_1=l1_fm['params'],
+            lig_params_2=l2_fm['params'] if params.ligand_2 else None,
             work_dir=Path(params.structure).parent
         ) 
     
-     
-    
     fs.safe_rm( score_file )    
-    fs.safe_rm( ligand_1_parameters[1] )    
-    fs.safe_rm( ligand_2_parameters[1] )    
+    #fs.safe_rm( l1_fm[1] )    
+    #fs.safe_rm( ligand_2_parameters[1] )    
     start_dir:str = os.getcwd()
 
-    os.chdir( 'work_dir' ) #TODO(CJ): update this 
+    os.chdir( params.work_dir ) 
     eh.interface.rosetta.run_rosetta_scripts( [f"@options.txt"] )
     os.chdir( start_dir )
 
-    df:pd.DataFrame = eh.interface.rosetta.parse_score_file( score_file )
-    #show top 5
-    df.sort_values(by='total_score',inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    idx = min(20, len(df))    
-    eh.core._LOGGER.info(f"EnzyRCD run complete. Top {idx} structures are:")
-    eh.core._LOGGER.info(f"No. \t    REU\t Structure")
-    
-    for i, row in df.iterrows():
-        if i == idx:
-            break
-        eh.core._LOGGER.info(f"{i+1: 3}\t{row.total_score:6.2f}\t{row.description}")
-    
-    df.to_csv(Path(score_file).with_suffix('.csv'), index=False)
+    score_csv:str = log_results( score_file, params.top_n )
+
     elapsed = time.time() - start
     log_elapsed_time( elapsed )
 

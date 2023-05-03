@@ -1,0 +1,100 @@
+##############################################################################################################
+#
+# Rosetta crash log. Please submit the contents of this file to http://crash.rosettacommons.org/
+# or use the script Rosetta/main/source/scripts/python/public/report_crashes.py
+#
+
+[START_CRASH_REPORT]
+[ROSETTA_VERSION]: 2021.16+release.8ee4f02
+[COMMIT_DATE]: 2021-04-20T20:57:38.289184
+[APPLICATION]: /dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease
+[MODE]: Release
+[EXTRAS]: default
+[OS]: GNU/Linux
+[COMPILER]: GCC version "5.2.0"
+[STDLIB]: libstdc++ version 20150716
+[START_OPTIONS]
+ -in:file -in:file:s=relaxed.pdb -in:file:extra_res_fa=/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L01.params /home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L02.params -out -out:overwrite -out:nstruct=10 -out:level=200 -out:file:scorefile=score.sc -out:path:all=./complexes/ -out:path= -run:preserve_header -parser -parser:protocol=/home/jurichc/projects/EnzyRCD/xmls/lig_dock2.xml -packing -packing:ignore_ligand_chi -packing:no_optH=false -packing:flip_HNQ -packing:ex1 -packing:ex2 -packing:ex2aro -enzdes -enzdes:cstfile=/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/RDock.cst
+
+[END_OPTIONS]
+
+[START_BACKTRACE]: RAW_LIBC
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(backtrace_string[abi:cxx11](int)+0x43) [0x2b8d2dae9513]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(utility::excn::Exception::Exception(char const*, int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0xdf) [0x2b8d2dae8bcf]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(utility::UtilityExitException::UtilityExitException(char const*, int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0xfc) [0x2b8d2db90d6c]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(utility::exit(char const*, int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, int)+0x36) [0x2b8d2db90b36]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::wwPDBJobOutputter::final_pose(std::shared_ptr<protocols::jd2::Job>, core::pose::Pose const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0x19db) [0x2b8d277a16eb]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::job_succeeded(core::pose::Pose&, double, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0xb1) [0x2b8d276f3a31]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::FileSystemJobDistributor::job_succeeded(core::pose::Pose&, double, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0x9) [0x2b8d276e61d9]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::write_output_from_job(core::pose::Pose&, std::shared_ptr<protocols::moves::Mover>, protocols::moves::MoverStatus, unsigned long, unsigned long&)+0x128c) [0x2b8d276f643c]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::run_one_job(std::shared_ptr<protocols::moves::Mover>&, long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&, unsigned long&, unsigned long&, bool)+0xefb) [0x2b8d276f7aeb]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::go_main(std::shared_ptr<protocols::moves::Mover>)+0x156) [0x2b8d276f9996]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::FileSystemJobDistributor::go(std::shared_ptr<protocols::moves::Mover>)+0x47) [0x2b8d276df837]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease() [0x404612]
+/lib64/libc.so.6(__libc_start_main+0xf5) [0x2b8d30ae2555]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease() [0x40492e]
+
+[END_BACKTRACE]
+
+[FILE]: src/protocols/jd2/wwPDBJobOutputter.cc
+[LINE]: 89
+[START_MESSAGE]
+[ ERROR ] UtilityExitException
+ERROR: Unable to open file: ./complexes/relaxed_0001.pdb
+
+
+
+
+[END_MESSAGE]
+[END_CRASH_REPORT]
+
+##############################################################################################################
+#
+# Rosetta crash log. Please submit the contents of this file to http://crash.rosettacommons.org/
+# or use the script Rosetta/main/source/scripts/python/public/report_crashes.py
+#
+
+[START_CRASH_REPORT]
+[ROSETTA_VERSION]: 2021.16+release.8ee4f02
+[COMMIT_DATE]: 2021-04-20T20:57:38.289184
+[APPLICATION]: /dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease
+[MODE]: Release
+[EXTRAS]: default
+[OS]: GNU/Linux
+[COMPILER]: GCC version "5.2.0"
+[STDLIB]: libstdc++ version 20150716
+[START_OPTIONS]
+ -in:file -in:file:s=relaxed.pdb -in:file:extra_res_fa=/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L01.params /home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L02.params -out -out:overwrite -out:nstruct=10 -out:level=200 -out:file:scorefile=score.sc -out:path:all=./complexes/ -out:path= -run:preserve_header -parser -parser:protocol=/home/jurichc/projects/EnzyRCD/xmls/lig_dock2.xml -packing -packing:ignore_ligand_chi -packing:no_optH=false -packing:flip_HNQ -packing:ex1 -packing:ex2 -packing:ex2aro -enzdes -enzdes:cstfile=/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/RDock.cst
+
+[END_OPTIONS]
+
+[START_BACKTRACE]: RAW_LIBC
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(backtrace_string[abi:cxx11](int)+0x43) [0x2b9e20fcf513]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(utility::excn::Exception::Exception(char const*, int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0xdf) [0x2b9e20fcebcf]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(utility::UtilityExitException::UtilityExitException(char const*, int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0xfc) [0x2b9e21076d6c]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libutility.so(utility::exit(char const*, int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, int)+0x36) [0x2b9e21076b36]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::wwPDBJobOutputter::final_pose(std::shared_ptr<protocols::jd2::Job>, core::pose::Pose const&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0x19db) [0x2b9e1ac876eb]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::job_succeeded(core::pose::Pose&, double, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0xb1) [0x2b9e1abd9a31]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::FileSystemJobDistributor::job_succeeded(core::pose::Pose&, double, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)+0x9) [0x2b9e1abcc1d9]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::write_output_from_job(core::pose::Pose&, std::shared_ptr<protocols::moves::Mover>, protocols::moves::MoverStatus, unsigned long, unsigned long&)+0x128c) [0x2b9e1abdc43c]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::run_one_job(std::shared_ptr<protocols::moves::Mover>&, long, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&, unsigned long&, unsigned long&, bool)+0xefb) [0x2b9e1abddaeb]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::JobDistributor::go_main(std::shared_ptr<protocols::moves::Mover>)+0x156) [0x2b9e1abdf996]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main/source/build/src/release/linux/3.10/64/x86/gcc/5.2/default/libprotocols.1.so(protocols::jd2::FileSystemJobDistributor::go(std::shared_ptr<protocols::moves::Mover>)+0x47) [0x2b9e1abc5837]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease() [0x404612]
+/lib64/libc.so.6(__libc_start_main+0xf5) [0x2b9e23fc8555]
+/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease() [0x40492e]
+
+[END_BACKTRACE]
+
+[FILE]: src/protocols/jd2/wwPDBJobOutputter.cc
+[LINE]: 89
+[START_MESSAGE]
+[ ERROR ] UtilityExitException
+ERROR: Unable to open file: ./complexes/relaxed_0001.pdb
+
+
+
+
+[END_MESSAGE]
+[END_CRASH_REPORT]
+

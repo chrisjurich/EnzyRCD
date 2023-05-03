@@ -1,0 +1,95 @@
+2023-05-03 00:01:48,289 INFO:protonate.py:185:pdb2pqr_protonate_pdb:Finished running pdb2pqr! Output saved to '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/scratch/protonate_peptide_with_pdb2pqr_output.pdb'
+2023-05-03 00:01:49,374 INFO:general.py:75:update_residues:updating ('A', 45) HIS to HID
+2023-05-03 00:01:49,378 INFO:general.py:75:update_residues:updating ('A', 61) HIS to HIE
+2023-05-03 00:01:49,382 INFO:general.py:75:update_residues:updating ('A', 81) HIS to HID
+2023-05-03 00:01:49,386 INFO:general.py:75:update_residues:updating ('A', 107) HIS to HID
+2023-05-03 00:01:49,387 INFO:general.py:75:update_residues:updating ('A', 111) HIS to HIE
+2023-05-03 00:01:49,394 INFO:general.py:75:update_residues:updating ('A', 149) HIS to HID
+2023-05-03 00:01:49,401 INFO:general.py:75:update_residues:updating ('A', 184) HIS to HID
+2023-05-03 00:01:49,401 INFO:general.py:75:update_residues:updating ('A', 185) HIS to HID
+2023-05-03 00:01:49,427 INFO:general.py:75:update_residues:updating ('A', 324) HIS to HIE
+2023-05-03 00:01:49,432 INFO:structure.py:367:renumber_atoms:renumbering atoms
+2023-05-03 00:01:49,478 INFO:env_manager.py:126:run_command:Running command: '/sb/apps/moe/bin/moebatch -script ../ligands/temp.svl'...
+2023-05-03 00:01:54,116 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:01:54,120 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/scripts/python/public/molfile_to_params.py ../ligands/ATP_ph_7_60_deprotonated_protonated.mol2 --name=L01 --clobber'...
+2023-05-03 00:01:54,333 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:01:54,358 INFO:env_manager.py:126:run_command:Running command: '/sb/meilerapps/Linux2/x86_64/bin/bcl.exe molecule:ConformerGenerator -conformation_comparer SymmetryRMSD 0.25 -ensemble_filenames ../ligands/ATP_ph_7_60_deprotonated_protonated.sdf -top_models 100 -conformers_single_file ../ligands/ATP_ph_7_60_deprotonated_protonated_conformers.sdf'...
+2023-05-03 00:02:18,046 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:02:28,740 WARNING:file_system.py:104:write_lines:The file './L01.params' exists and will be overwritten
+2023-05-03 00:02:28,759 INFO:env_manager.py:126:run_command:Running command: '/sb/apps/moe/bin/moebatch -script ../ligands/temp.svl'...
+2023-05-03 00:02:30,306 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:02:30,310 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/scripts/python/public/molfile_to_params.py ../ligands/ADN_ph_7_50_deprotonated_protonated.mol2 --name=L02 --clobber'...
+2023-05-03 00:02:30,461 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:02:30,469 INFO:env_manager.py:126:run_command:Running command: '/sb/meilerapps/Linux2/x86_64/bin/bcl.exe molecule:ConformerGenerator -conformation_comparer SymmetryRMSD 0.25 -ensemble_filenames ../ligands/ADN_ph_7_50_deprotonated_protonated.sdf -top_models 100 -conformers_single_file ../ligands/ADN_ph_7_50_deprotonated_protonated_conformers.sdf'...
+2023-05-03 00:02:41,241 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:02:48,860 WARNING:file_system.py:104:write_lines:The file './L02.params' exists and will be overwritten
+2023-05-03 00:02:48,879 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease @options.txt'...
+2023-05-03 00:02:51,758 ERROR:env_manager.py:133:run_command:Following error was raised during command excecution: 'Command '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease @options.txt' returned non-zero exit status 1.'. Exiting...
+2023-05-03 00:03:22,383 INFO:protonate.py:185:pdb2pqr_protonate_pdb:Finished running pdb2pqr! Output saved to '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/scratch/protonate_peptide_with_pdb2pqr_output.pdb'
+2023-05-03 00:03:23,516 INFO:general.py:75:update_residues:updating ('A', 45) HIS to HID
+2023-05-03 00:03:23,520 INFO:general.py:75:update_residues:updating ('A', 61) HIS to HIE
+2023-05-03 00:03:23,523 INFO:general.py:75:update_residues:updating ('A', 81) HIS to HID
+2023-05-03 00:03:23,528 INFO:general.py:75:update_residues:updating ('A', 107) HIS to HID
+2023-05-03 00:03:23,529 INFO:general.py:75:update_residues:updating ('A', 111) HIS to HIE
+2023-05-03 00:03:23,535 INFO:general.py:75:update_residues:updating ('A', 149) HIS to HID
+2023-05-03 00:03:23,542 INFO:general.py:75:update_residues:updating ('A', 184) HIS to HID
+2023-05-03 00:03:23,542 INFO:general.py:75:update_residues:updating ('A', 185) HIS to HID
+2023-05-03 00:03:23,567 INFO:general.py:75:update_residues:updating ('A', 324) HIS to HIE
+2023-05-03 00:03:23,572 INFO:structure.py:367:renumber_atoms:renumbering atoms
+2023-05-03 00:03:23,617 INFO:env_manager.py:126:run_command:Running command: '/sb/apps/moe/bin/moebatch -script ../ligands/temp.svl'...
+2023-05-03 00:03:24,918 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:03:24,922 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/scripts/python/public/molfile_to_params.py ../ligands/ATP_ph_7_60_deprotonated_protonated.mol2 --name=L01 --clobber'...
+2023-05-03 00:03:25,130 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:03:25,154 INFO:env_manager.py:126:run_command:Running command: '/sb/meilerapps/Linux2/x86_64/bin/bcl.exe molecule:ConformerGenerator -conformation_comparer SymmetryRMSD 0.25 -ensemble_filenames ../ligands/ATP_ph_7_60_deprotonated_protonated.sdf -top_models 100 -conformers_single_file ../ligands/ATP_ph_7_60_deprotonated_protonated_conformers.sdf'...
+2023-05-03 00:03:48,621 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:03:59,552 WARNING:file_system.py:104:write_lines:The file './L01.params' exists and will be overwritten
+2023-05-03 00:03:59,571 INFO:env_manager.py:126:run_command:Running command: '/sb/apps/moe/bin/moebatch -script ../ligands/temp.svl'...
+2023-05-03 00:04:01,014 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:04:01,019 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/scripts/python/public/molfile_to_params.py ../ligands/ADN_ph_7_50_deprotonated_protonated.mol2 --name=L02 --clobber'...
+2023-05-03 00:04:01,216 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:04:01,224 INFO:env_manager.py:126:run_command:Running command: '/sb/meilerapps/Linux2/x86_64/bin/bcl.exe molecule:ConformerGenerator -conformation_comparer SymmetryRMSD 0.25 -ensemble_filenames ../ligands/ADN_ph_7_50_deprotonated_protonated.sdf -top_models 100 -conformers_single_file ../ligands/ADN_ph_7_50_deprotonated_protonated_conformers.sdf'...
+2023-05-03 00:04:11,897 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:04:19,617 WARNING:file_system.py:104:write_lines:The file './L02.params' exists and will be overwritten
+2023-05-03 00:04:19,632 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease @options.txt'...
+2023-05-03 00:05:09,793 ERROR:env_manager.py:133:run_command:Following error was raised during command excecution: 'Command '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease @options.txt' returned non-zero exit status 1.'. Exiting...
+2023-05-03 00:07:03,505 INFO:protonate.py:185:pdb2pqr_protonate_pdb:Finished running pdb2pqr! Output saved to '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/scratch/protonate_peptide_with_pdb2pqr_output.pdb'
+2023-05-03 00:07:04,625 INFO:general.py:75:update_residues:updating ('A', 45) HIS to HID
+2023-05-03 00:07:04,628 INFO:general.py:75:update_residues:updating ('A', 61) HIS to HIE
+2023-05-03 00:07:04,632 INFO:general.py:75:update_residues:updating ('A', 81) HIS to HID
+2023-05-03 00:07:04,637 INFO:general.py:75:update_residues:updating ('A', 107) HIS to HID
+2023-05-03 00:07:04,638 INFO:general.py:75:update_residues:updating ('A', 111) HIS to HIE
+2023-05-03 00:07:04,644 INFO:general.py:75:update_residues:updating ('A', 149) HIS to HID
+2023-05-03 00:07:04,651 INFO:general.py:75:update_residues:updating ('A', 184) HIS to HID
+2023-05-03 00:07:04,652 INFO:general.py:75:update_residues:updating ('A', 185) HIS to HID
+2023-05-03 00:07:04,677 INFO:general.py:75:update_residues:updating ('A', 324) HIS to HIE
+2023-05-03 00:07:04,682 INFO:structure.py:367:renumber_atoms:renumbering atoms
+2023-05-03 00:07:04,729 INFO:env_manager.py:126:run_command:Running command: '/sb/apps/moe/bin/moebatch -script ../ligands/temp.svl'...
+2023-05-03 00:07:06,290 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:07:06,294 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/scripts/python/public/molfile_to_params.py ../ligands/ATP_ph_7_60_deprotonated_protonated.mol2 --name=L01 --clobber'...
+2023-05-03 00:07:06,505 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:07:06,531 INFO:env_manager.py:126:run_command:Running command: '/sb/meilerapps/Linux2/x86_64/bin/bcl.exe molecule:ConformerGenerator -conformation_comparer SymmetryRMSD 0.25 -ensemble_filenames ../ligands/ATP_ph_7_60_deprotonated_protonated.sdf -top_models 100 -conformers_single_file ../ligands/ATP_ph_7_60_deprotonated_protonated_conformers.sdf'...
+2023-05-03 00:07:30,103 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:07:40,791 WARNING:file_system.py:104:write_lines:The file './L01.params' exists and will be overwritten
+2023-05-03 00:07:40,809 INFO:env_manager.py:126:run_command:Running command: '/sb/apps/moe/bin/moebatch -script ../ligands/temp.svl'...
+2023-05-03 00:07:42,323 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:07:42,327 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/scripts/python/public/molfile_to_params.py ../ligands/ADN_ph_7_50_deprotonated_protonated.mol2 --name=L02 --clobber'...
+2023-05-03 00:07:42,512 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:07:42,520 INFO:env_manager.py:126:run_command:Running command: '/sb/meilerapps/Linux2/x86_64/bin/bcl.exe molecule:ConformerGenerator -conformation_comparer SymmetryRMSD 0.25 -ensemble_filenames ../ligands/ADN_ph_7_50_deprotonated_protonated.sdf -top_models 100 -conformers_single_file ../ligands/ADN_ph_7_50_deprotonated_protonated_conformers.sdf'...
+2023-05-03 00:07:53,287 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:08:00,679 WARNING:file_system.py:104:write_lines:The file './L02.params' exists and will be overwritten
+2023-05-03 00:08:00,684 WARNING:file_system.py:104:write_lines:The file 'options.txt' exists and will be overwritten
+2023-05-03 00:08:00,690 INFO:env_manager.py:126:run_command:Running command: '/dors/meilerlab/apps/rosetta/rosetta-3.13/main//source/bin/rosetta_scripts.linuxgccrelease @options.txt'...
+2023-05-03 00:15:03,953 INFO:env_manager.py:131:run_command:Command run!
+2023-05-03 00:15:03,997 INFO:EnzyRCD:438:log_results:EnzyRCD run complete. Top 10 structures are:
+2023-05-03 00:15:03,997 INFO:EnzyRCD:439:log_results:No. 	    REU	 Structure
+2023-05-03 00:15:03,998 INFO:EnzyRCD:444:log_results:  1	-675.94	relaxed_0007
+2023-05-03 00:15:03,998 INFO:EnzyRCD:444:log_results:  2	-675.81	relaxed_0006
+2023-05-03 00:15:03,998 INFO:EnzyRCD:444:log_results:  3	-674.88	relaxed_0010
+2023-05-03 00:15:03,998 INFO:EnzyRCD:444:log_results:  4	-669.25	relaxed_0001
+2023-05-03 00:15:03,999 INFO:EnzyRCD:444:log_results:  5	-647.98	relaxed_0002
+2023-05-03 00:15:03,999 INFO:EnzyRCD:444:log_results:  6	-636.92	relaxed_0003
+2023-05-03 00:15:03,999 INFO:EnzyRCD:444:log_results:  7	-631.76	relaxed_0008
+2023-05-03 00:15:03,999 INFO:EnzyRCD:444:log_results:  8	-572.28	relaxed_0004
+2023-05-03 00:15:03,999 INFO:EnzyRCD:444:log_results:  9	-545.29	relaxed_0009
+2023-05-03 00:15:03,999 INFO:EnzyRCD:444:log_results: 10	-502.00	relaxed_0005
+2023-05-03 00:15:04,011 INFO:EnzyRCD:428:log_elapsed_time:Elapsed time: 0 days 0 hours 8 minutes 8 seconds

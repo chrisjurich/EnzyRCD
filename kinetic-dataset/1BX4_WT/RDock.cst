@@ -1,0 +1,32 @@
+# cst constraint descriptor for ReactiveDocking of SAM dependent methal transferase 
+# The S-C-Nu between SAM and substrate is constrained to the reactive value in the reacting coordinate. 
+# TODO(CJ): fix this
+
+#block 1 for interaction of substrate with ADN to ATP 
+CST::BEGIN
+  TEMPLATE::   ATOM_MAP: 1 atom_name: O1 C1 C2 
+  TEMPLATE::   ATOM_MAP: 1 residue3: L02 
+
+  TEMPLATE::   ATOM_MAP: 2 atom_name: P1 O6 P2
+  TEMPLATE::   ATOM_MAP: 2 residue3: L01 
+
+  CONSTRAINT:: distanceAB:    3.60   0.20 100.00  0
+  CONSTRAINT::    angle_A:  180.00  30.00  30.00  360.00
+  CONSTRAINT::    angle_B:    0.00   0.00   0.00  360.00
+  CONSTRAINT::  torsion_A:    0.00   0.00   0.00  360.00
+  CONSTRAINT::  torsion_B:    0.00   0.00   0.00  360.00
+CST::END
+
+
+#block 2: interaction of ADN and the SAP
+
+CST::BEGIN
+  TEMPLATE::   ATOM_MAP: 1 atom_name: H1 O2 C1
+  TEMPLATE::   ATOM_MAP: 1 residue3: L02
+  
+  TEMPLATE::   ATOM_MAP: 2 atom_name: OD2 CB CG
+  TEMPLATE::   ATOM_MAP: 2 residue3: ASP 
+
+  CONSTRAINT:: distanceAB:    3.60   0.20 100.00  0        0
+CST::END
+

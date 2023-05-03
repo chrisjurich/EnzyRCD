@@ -1,0 +1,23 @@
+-in:file
+  -s 'relaxed.pdb'
+  -extra_res_fa '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L01.params'
+  -extra_res_fa '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L02.params'
+-run:preserve_header
+-packing
+    -ex1
+    -ex2aro
+    -ex2 
+    -no_optH false
+    -flip_HNQ true
+    -ignore_ligand_chi true
+-enzdes
+    -cstfile '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/RDock.cst'
+-parser
+   -protocol /home/jurichc/projects/EnzyRCD/xmls/lig_dock2.xml
+-out
+   -file:scorefile 'score.sc'
+   -level 200
+   -nstruct 10
+   -overwrite
+   -path
+       -all './complexes'

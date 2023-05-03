@@ -1,0 +1,10 @@
+#!/usr/bin/env bash 
+~/projects/EnzyRCD/EnzyRCD             ./relaxed.pdb      \
+                --ligand_1 ../ligands/ATP_ph_7_60.mol2        \
+                --ligand_1_name L01                 \
+                --ligand_2 ../ligands/ADN_ph_7_50.mol2        \
+                --ligand_2_name L02                 \
+                --constraints ./RDock.cst    \
+                --n_struct 10               \
+                --work_dir "./"
+
