@@ -575,6 +575,7 @@ def prepare_ligand( molfile:str, res_code:str, params:ValidatedArgs ) -> Dict[st
 def main( params : ValidatedArgs ) -> None:
     """ Main routine """
     #TODO(CJ): actually use the pH that is supplied
+    #TODO(CJ): need to change all occupancies to 1.00 if needed
     start = time.time()
     fs.safe_mkdir( params.work_dir )
     #TODO(CJ): give option to give the conformer files ahead of time 
