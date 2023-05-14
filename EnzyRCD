@@ -25,9 +25,17 @@ pymol2.SingletonPyMOL().start()
 ROOT_DIR:str=str(Path(__file__).parent.absolute())
 """ """
 
+RosettaCst=namedtuple(
+    'RosettaCst',
+    'rname_1 rnum_1 ratoms_1 rchain_1 rname_2 rnum_2 ratoms_2 rchain_2 constraints' 
+)
+
+RosettaCst.__doc__="""namedtuple() that holds a Rosetta Constaint between two"""
+
+
 ValidatedArgs=namedtuple(
     'ValidatedArgs', 
-    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 ligand_1_name ligand_2_name constraints n_structures protonate_structure work_dir top_n'
+    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n'
 )
 ValidatedArgs.__doc__="""namedtuple() that holds the arguments from the commandline parser after being treated and validated. Has the below 
 attributes:
@@ -42,6 +50,55 @@ attributes:
 
 """
 #TODO(CJ): add documentation for the attributes -> finish this
+
+
+def parse_rosetta_cst( raw : str ) -> List[RosettaCst]:
+    """TODO(CJ): Make the docstring for this  """
+    raw = raw[1:-1]
+    var={'constraints':[]}
+    ALLOWED_CSTS:Set[str] = set(
+        "distanceAB angle_A angle_B torsion_A torsion_B torsion_AB".split()
+    )
+    
+    tokens:List[str] = raw.split(')(')
+
+    if len(tokens) < 3:
+        eh.core._LOGGER(f"There must be at least 3 blocks in an individual constraint. There are only {len(tokens)} in '{raw}'. Exiting...")
+        exit( 1 )
+
+    for tidx, tk in enumerate(tokens):
+        
+        spl:List[str] = tk.split(',')
+        if tidx < 2:
+            var[f"rchain_{tidx+1}"] = spl[0]
+            var[f"rnum_{tidx+1}"] = int(spl[1])
+            var[f"rname_{tidx+1}"] = spl[2]
+            var[f"ratoms_{tidx+1}"] = spl[3:]
+        else:
+            if spl[0] not in ALLOWED_CSTS:
+                eh.core._LOGGER(f"The supplied constraint type {spl[0]} is not supported. Allowed are: {', '.join(sorted(list(ALLOWED_CSTS)))}. Exiting...")
+                exit( 1 )
+
+            temp = [spl[0]]
+            for tt in spl[1:]:
+                if tt.find('.') == -1:
+                    temp.append(int(tt))
+                else:
+                    temp.append(float(tt))
+                
+            var['constraints'].append( temp )            
+        
+    return RosettaCst(
+        rname_1=var['rname_1'],
+        rnum_1=var['rnum_1'],
+        ratoms_1=var['ratoms_1'],
+        rchain_1=var['rchain_1'],
+        rname_2=var['rname_2'],
+        rnum_2=var['rnum_2'],
+        ratoms_2=var['ratoms_2'],
+        rchain_2=var['rchain_2'],
+        constraints=var['constraints']
+    )
 
 def redirect_stdout():
     #print "Redirecting stdout"
@@ -153,23 +210,23 @@ def parse_args() -> ValidatedArgs:
     parser.add_argument(
         '--ligand_1',
         type=str,
-        help='The path to ligand_1. Note this is REQUIRED.'
+        help='The path to ligand_1. Assumed to be substrate and must have name of L01. Note this is REQUIRED.'
     )
-    parser.add_argument(
-        '--ligand_1_name',
-        type=str,
-        help='The three letter code for the residue. Note this REQUIRED.'
-    )
+#    parser.add_argument(
+#        '--ligand_1_name',
+#        type=str,
+#        help='The three letter code for the residue. Note this REQUIRED.'
+#    )
     parser.add_argument(
         '--ligand_2',
         type=str,
-        help='The path to ligand_2. Note this is NOT REQUIRED.'
+        help='The path to ligand_2. Must have a name of L02. Note this is NOT REQUIRED.'
     )
-    parser.add_argument(
-        '--ligand_2_name',
-        type=str,
-        help='The three letter code for the residue. Note this is NOT REQUIRED unless --ligand_2 is supplied.'
-    )
+#    parser.add_argument(
+#        '--ligand_2_name',
+#        type=str,
+#        help='The three letter code for the residue. Note this is NOT REQUIRED unless --ligand_2 is supplied.'
+#    )
     parser.add_argument( #TODO(CJ): try to make it so that this can also be specified
         '--constraints',
         type=str,
@@ -228,16 +285,16 @@ def parse_args() -> ValidatedArgs:
         eh.core._LOGGER.error("--ligand_1 is a required argument.")
         exit( 1 )
     
-    if not args.ligand_1_name:
-        eh.core._LOGGER.error("--ligand_1_name is a required argument.")
-        exit( 1 )
+#    if not args.ligand_1_name:
+#        eh.core._LOGGER.error("--ligand_1_name is a required argument.")
+#        exit( 1 )
 
     mutations:List[str] = check_mutations( args )
 
-    if args.ligand_2:
-        if not args.ligand_2_name:
-            eh.core._LOGGER.error("--ligand_2_name is a required argument. When --ligand_2 is supplied.")
-            exit( 1 )
+#    if args.ligand_2:
+#        if not args.ligand_2_name:
+#            eh.core._LOGGER.error("--ligand_2_name is a required argument. When --ligand_2 is supplied.")
+#            exit( 1 )
 
     ligand_1, ligand_2 = str(), str()
     ligand_1_name, ligand_2_name = str(), str()
@@ -246,21 +303,27 @@ def parse_args() -> ValidatedArgs:
 
     ligand_1 = args.ligand_1
 
-    check_residue_id( args.ligand_1_name )
-    ligand_1_name = args.ligand_1_name
+#    check_residue_id( args.ligand_1_name )
+    #ligand_1_name = args.ligand_1_name
 
     if args.ligand_2:
         fs.check_file_exists( args.ligand_2 )
         ligand_2 = args.ligand_2
-        check_residue_id( args.ligand_2_name )
-        ligand_2_name = args.ligand_2_name
+    #    check_residue_id( args.ligand_2_name )
+    #    ligand_2_name = args.ligand_2_name
 
 
-    constraints = str()
+    constraints: List[RosettaCst] = list()
 
     if args.constraints:
-        constraints = args.constraints
-        fs.check_file_exists( constraints )
+        #print(args.constraints)
+        for chunk in args.constraints.split('),('):
+            if chunk[0] != '(':
+                chunk = '(' + chunk
+            if chunk[-1] != ')':
+                chunk += ')'
+            
+            constraints.append(parse_rosetta_cst( chunk ))            
 
     return ValidatedArgs(
         structure=args.structure,
@@ -270,8 +333,8 @@ def parse_args() -> ValidatedArgs:
         n_conformers=args.n_conformers,
         ligand_1=ligand_1,
         ligand_2=ligand_2,
-        ligand_1_name=ligand_1_name,
-        ligand_2_name=ligand_2_name,
+#        ligand_1_name=ligand_1_name,
+#        ligand_2_name=ligand_2_name,
         constraints=constraints,
         n_structures=args.n_struct,
         protonate_structure=args.protonate_structure,
@@ -279,9 +342,10 @@ def parse_args() -> ValidatedArgs:
         top_n=args.top_n
     )
 
-def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:str=None, work_dir:str=None ) -> str:
+def make_options_file(stru_file:str,  params : ValidatedArgs, lig_params_1:str, lig_params_2:str=None, work_dir:str=None, cst_file:str=None ) -> str:
     """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
     Args:
+        stru_file:
         params:
         lig_params_1:
         lig_params_2:
@@ -291,13 +355,14 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
         The path to the options file as a str().
     """
     work_dir = params.work_dir
+    stru_file = Path(stru_file)
     
     if not work_dir:
-        work_dir = str(Path(params.structure).parent)
+        work_dir = str(stru_file.parent)
 
     content:List[str] = [
         "-in:file",
-        f"  -s '{Path(params.structure).name}'",
+        f"  -s '{stru_file.name}'",
         f"  -extra_res_fa '{Path(lig_params_1).absolute()}'",
     ]
 
@@ -318,12 +383,13 @@ def make_options_file( params : ValidatedArgs, lig_params_1:str, lig_params_2:st
             "    -ignore_ligand_chi true",
         ]
     )
-
-    if params.constraints:
+    
+    if cst_file:
+        #TODO(CJ): need to add in the constraints here
         content.extend(
             [
                 "-enzdes",
-                f"    -cstfile '{Path(params.constraints).absolute()}'"
+                f"    -cstfile '{Path(cst_file).absolute()}'"
             ]
         )
 
@@ -544,12 +610,18 @@ def kekulize( in_file:str, out_format:str='.sdf' )->str:
         else:
             bb.SetBondType( Chem.BondType.SINGLE )
    
-
     outfile = Path(in_file).with_suffix(out_format )
-    w = Chem.SDWriter(str(outfile))
-    w.SetKekulize( True )
-    w.write(mol)
-    w.close()
+    
+    if out_format == '.sdf':
+        w = Chem.SDWriter(str(outfile))
+        w.SetKekulize( True )
+        w.write(mol)
+        w.close()
+    elif out_format == '.mol2':
+        temp_file = Path(outfile).with_suffix('.mol')
+        Chem.MolToMolFile(mol, str(temp_file))
+        eh.interface.pymol.convert(temp_file, new_ext='.mol2')
+        fs.safe_rm( temp_file )
 
     return str( outfile )
 
@@ -557,6 +629,7 @@ def prepare_ligand( molfile:str, res_code:str, params:ValidatedArgs ) -> Dict[st
     """ """
     file_mapper:Dict[str,str] = { 'input': str(molfile) }
     file_mapper['deprotonated'] = eh.interface.pymol.de_protonate( file_mapper['input'] )
+    file_mapper['deprotonated'] = kekulize( file_mapper['deprotonated'], '.mol2' )
     file_mapper['protonated'] = eh.interface.moe.protonate( file_mapper['deprotonated'] )
     (params_file, pdb_file)  = eh.interface.rosetta.parameterize_ligand( file_mapper['protonated'], res_code )
     file_mapper['params'] = params_file
@@ -571,11 +644,74 @@ def prepare_ligand( molfile:str, res_code:str, params:ValidatedArgs ) -> Dict[st
     #TODO(CJ): need to move the conformers here and set them up correctly
     return file_mapper
 
+def place_ligands( params : ValidatedArgs ):
+    """ """
+    eh.core._LOGGER.info("Beginning ligand placement protocol...")
+    #TODO(CJ): figure out the "EnzyHTP" way of loading the residue names
+    cmd.delete('all')
+    cmd.load(params.structure)
+    stored.holder = []
+    cmd.iterate('all', 'stored.holder.append((chain, resi, resn))')
+    stored.holder = sorted(list(set(stored.holder)))
+    
+    ct = sum([pr[-1] in "L01 L02".split() for pr in stored.holder])
+
+    if ct == 2:
+        eh.core._LOGGER.info("L01 and L02 are already found in structure. No ligand placement necessary!")
+        return params.structure
+    else:
+        #TODO(CJ): This is where more stuff has to happen... alphafill etc
+        eh.core._LOGGER.info("Finished ligand placement protocol!")
+        return None
+
+
+def add_constraints( current_structure : str, params : ValidatedArgs ) -> Tuple[str, str]:
+    """ """
+    eh.core._LOGGER.info(params.constraints)
+    current_structure = Path(current_structure)
+    cst_file, pdb_with_csts = str(current_structure.parent / "RDock.cst"), f"{current_structure.parent}/{current_structure.stem}_csts.pdb"
+    
+    cst_content:List[str] = list()
+    #TODO(CJ): put in some kind of header here
+
+    res_mappings = list() 
+
+    for cidx, cst in enumerate(params.constraints):
+        #TODO(CJ): need to check that the residues are legit -> Either a three residue code
+        # or L01/L02
+        if cst_content:
+            cst_content.append("")
+
+        res_mappings.append(
+            f"REMARK 666 MATCH TEMPLATE {cst.rchain_1} {cst.rname_1}  {cst.rnum_1} MATCH MOTIF {cst.rchain_2} {cst.rname_2}  {cst.rnum_2}  {cidx+1}  1"
+        )
+
+        cst_content.append("CST::BEGIN")
+        cst_content.append(f"   TEMPLATE::  ATOM_MAP: 1 atom_name: {' '.join(cst.ratoms_1)}")
+        cst_content.append(f"   TEMPLATE::  ATOM_MAP: 1 residue3: {cst.rname_1}")
+        cst_content.append("")
+        cst_content.append(f"   TEMPLATE::  ATOM_MAP: 2 atom_name: {' '.join(cst.ratoms_2)}")
+        cst_content.append(f"   TEMPLATE::  ATOM_MAP: 2 residue3: {cst.rname_2}")
+        cst_content.append("") 
+
+        for ridx, rule in enumerate(cst.constraints):
+            cst_content.append(f"   CONSTRAINT::  {rule[0]}: {rule[1]} {rule[2]} {rule[3]} {ridx}")
+
+        cst_content.append("CST::END")
+
+    fs.write_lines(cst_file, cst_content)
+    
+    content:List[str] = ["HEADER                                            xx-MMM-xx", ] + res_mappings
+    content.extend( fs.lines_from_file(current_structure) )
+    fs.write_lines(pdb_with_csts, content )
+
+    return (pdb_with_csts, cst_file)
 
 def main( params : ValidatedArgs ) -> None:
     """ Main routine """
     #TODO(CJ): actually use the pH that is supplied
     #TODO(CJ): need to change all occupancies to 1.00 if needed
+
     start = time.time()
     fs.safe_mkdir( params.work_dir )
     #TODO(CJ): give option to give the conformer files ahead of time 
@@ -603,15 +739,16 @@ def main( params : ValidatedArgs ) -> None:
     if params.ligand_2:
         l2_fm:Dict[str,str] = prepare_ligand( params.ligand_2, 'L02', params )
 
-
-    #TODO(CJ): this is where the ligand placement will go
-
+    current_structure = place_ligands( params )
+    (current_structure, cst_file) = add_constraints( current_structure, params )
 
     (options_file, score_file) = make_options_file(
+            current_structure,
             params,
             lig_params_1=l1_fm['params'],
             lig_params_2=l2_fm['params'] if params.ligand_2 else None,
-            work_dir=Path(params.structure).parent
+            work_dir=Path(params.structure).parent,
+            cst_file=cst_file
         ) 
     
     fs.safe_rm( score_file )    
