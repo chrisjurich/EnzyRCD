@@ -1,5 +1,5 @@
 -in:file
-  -s 'relaxed.pdb'
+  -s 'test_prot_csts.pdb'
   -extra_res_fa '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L01.params'
   -extra_res_fa '/home/jurichc/projects/EnzyRCD/kinetic-dataset/1BX4_WT/L02.params'
 -run:preserve_header
@@ -17,7 +17,7 @@
 -out
    -file:scorefile 'score.sc'
    -level 200
-   -nstruct 10
+   -nstruct 1
    -overwrite
    -path
        -all './complexes'
