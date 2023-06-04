@@ -10,6 +10,9 @@ import numpy as np
 import pandas as pd 
 import enzy_htp as eh
 from rdkit import Chem
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
+
 from pathlib import Path
 from pymol import cmd, stored
 from typing import List, Tuple, Dict, Union
@@ -27,6 +30,7 @@ pymol2.SingletonPyMOL().start()
 ROOT_DIR: str = str(Path(__file__).parent.absolute())
 """Path of the root dir of the project, where the EnzyRCD script is stored."""
 
+#TODO(CJ): move this to the rosetta interface file
 RosettaCst = namedtuple(
     'RosettaCst',
     'rname_1 rnum_1 ratoms_1 rchain_1 rname_2 rnum_2 ratoms_2 rchain_2 constraints'
@@ -36,7 +40,7 @@ RosettaCst.__doc__ = """namedtuple() that holds a Rosetta Constaint between two"
 
 ValidatedArgs = namedtuple(
     'ValidatedArgs',
-    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling'
+    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling use_cache'
 )
 ValidatedArgs.__doc__ = """namedtuple() that holds the arguments from the commandline parser after being treated and validated. Has the below 
 attributes:
@@ -52,8 +56,32 @@ attributes:
 """
 #TODO(CJ): add documentation for the attributes -> finish this
 
-def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
+def likely_a_file( raw: str ) -> bool:
+    """Applies heuristics to guess if the supplied str() is a filepath or not. Checks if:
+        + has './' 
+        + has '//' 
+        + has a suffix as defined by pathlib
+
+    Args:
+        raw: The candidate str() to check.
+    
+    Returns:
+        Whether the supplied str() is likely a file based on heuristics.
     """
+    if raw.find('./') != -1:
+        return True
+
+    if raw.find('//') != -1:
+        return True
+
+    temp = Path(raw)
+    if len(temp.suffix):    
+        return True
+
+    return False
+
+def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
+    """Takes raw constraints and converts them into RosettaCst() namedtuple()'s,  
     
     Args:
         raw:
@@ -67,7 +95,9 @@ def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
     ALLOWED_CSTS: Set[str] = set(
         "distanceAB angle_A angle_B torsion_A torsion_B torsion_AB".split())
 
-    tokens: List[str] = raw.split(')(')
+    tokens: List[str] = list(
+        filter(len,raw.split(')('))
+    )
 
     if len(tokens) < 3:
         eh.core._LOGGER.info(
@@ -121,6 +151,8 @@ def redirect_stdout():
 
 
 def make_df(sele: str) -> pd.DataFrame:
+   
+
     stored.holder = []
 
     cmd.iterate_state(
@@ -272,6 +304,11 @@ def parse_args() -> ValidatedArgs:
         default='work_dir',
         help='How the temp files generated for both ligands and the original structure are handled. Allowed values are "work_dir" and "delete"'
     )
+    parser.add_argument(
+        '--use_cache',
+        action='store_true',
+        help='Whether or not to use cache files when possible. Not that this DOES NOT check for pH and structure correctness currently.'
+    )
 
     args = parser.parse_args()
     fs.check_file_exists(args.structure)
@@ -334,20 +371,31 @@ def parse_args() -> ValidatedArgs:
 
     if args.constraints:
         c_file = Path(args.constraints)
+        if likely_a_file( args.constraints):
+            fs.check_file_exists( c_file )
+
+        has_csts:bool=False
+
         if c_file.exists():
             content:str = fs.content_from_file(c_file)
             content = ''.join(content.split())
+            if not content: 
+                eh.core._LOGGER.warning(f"The supplied file '{args.constraints}' contained no constraints. Continuing...")
+                has_csts = True
         else:
             content:str=args.constraints
+            if not content:
+                eh.core._LOGGER.warning("The supplied argument for --constraints is empty. Continuing...")
+                has_csts = True
         
-        #TODO(CJ): do some kind of parsing check
-        for chunk in content.split('),('):
-            if chunk[0] != '(':
-                chunk = '(' + chunk
-            if chunk[-1] != ')':
-                chunk += ')'
+        if not has_csts: 
+            for chunk in content.split('),('):
+                if chunk[0] != '(':
+                    chunk = '(' + chunk
+                if chunk[-1] != ')':
+                    chunk += ')'
 
-            constraints.append(parse_rosetta_cst(chunk))
+                constraints.append(parse_rosetta_cst(chunk))
 
     return ValidatedArgs(
         structure=args.structure,
@@ -362,7 +410,9 @@ def parse_args() -> ValidatedArgs:
         protonate_structure=args.protonate_structure,
         work_dir=args.work_dir,
         top_n=args.top_n,
-        temp_handling=args.temp_handling)
+        temp_handling=args.temp_handling,
+        use_cache=args.use_cache
+        )
 
 
 def make_options_file(stru_file: str,
@@ -414,9 +464,15 @@ def make_options_file(stru_file: str,
         content.extend(
             ["-enzdes", f"    -cstfile '{Path(cst_file).absolute()}'"])
 
+    selected_protocol:str = f"{ROOT_DIR}/xmls/"
+    if lig_params_2:
+        selected_protocol += "2_ligands.xml"
+    else:
+        selected_protocol += "1_ligand.xml"
+
     content.extend([
         "-parser",
-        f"   -protocol {ROOT_DIR}/xmls/lig_dock2.xml",  #TODO(CJ): fix this
+        f"   -protocol {selected_protocol}",  #TODO(CJ): fix this
         "-out",
         f"   -file:scorefile 'score.sc'",
         "   -level 200",
@@ -491,7 +547,14 @@ def protonate_ligand(molfile: str) -> str:
 
 
 def log_elapsed_time(elapsed: int) -> None:
-    """ """
+    """Logs the elapsed time of the subroutine. Takes an arguments in seconds and converts it to days,
+    hours, minutes, seconds, format.
+
+    Args:
+
+    Returns:
+        Nothing.
+    """
     days, hours, minutes, seconds = 0, 0, 0, 0
 
     minutes_denom = 60
@@ -536,67 +599,6 @@ def log_results(score_file: str, top_n: int) -> str:
     outfile: str = Path(score_file).with_suffix('.csv')
     df.to_csv(outfile, index=False)
     return outfile
-
-
-def parse_mol2(fname: str):
-
-    fh = open(fname, 'r')
-    lines = fh.read().splitlines()
-    fh.close()
-
-    lines.reverse()
-
-    temp = None
-
-    atom_mapper = dict()
-    connection_mapper = defaultdict(list)
-
-    while lines:
-
-        temp = lines.pop()
-
-        if not temp or temp.startswith('#'):
-            temp = lines.pop()
-            continue
-
-        if temp.find('@<TRIPOS>ATOM') != -1:
-            temp = lines.pop()
-            while temp.find('@') == -1:
-                (num, name, _) = temp.split(maxsplit=2)
-                atom_mapper[int(num)] = name
-                temp = lines.pop()
-
-        if temp.find('@<TRIPOS>BOND') != -1:
-            temp = lines.pop()
-            while temp.find('@') == -1:
-                (_, n1, n2, btype) = temp.split()
-                n1, n2 = int(n1), int(n2)
-                connection_mapper[n1].append((n2, btype))
-                connection_mapper[n2].append((n1, btype))
-                temp = lines.pop()
-
-    return (atom_mapper, connection_mapper)
-
-
-def no_aromatics(bonds):
-    for (prtner, btype) in bonds:
-        if btype == 'ar':
-            return False
-    return True
-
-
-def is_dead_end(anum, cmapper):
-    return len(cmapper[anum]) == 1
-
-
-def dead_end_aromatics_only(anum, cmapper):
-    for (nn, btype) in cmapper[anum]:
-        if btype != 'ar':
-            continue
-        if not is_dead_end(nn, cmapper):
-            return False
-
-    return True
 
 
 def kekulize(in_file: str, out_format: str = '.sdf') -> str:
@@ -645,6 +647,8 @@ def kekulize(in_file: str, out_format: str = '.sdf') -> str:
         Chem.MolToMolFile(mol, str(temp_file))
         eh.interface.pymol.convert(temp_file, new_ext='.mol2')
         fs.safe_rm(temp_file)
+    else:
+        raise TypeError('#TODO(CJ): need a better error here')
 
     return str(outfile)
 
@@ -653,7 +657,8 @@ def prepare_ligand(molfile: str, res_code: str,
                    params: ValidatedArgs) -> Dict[str, str]:
     """Convenience method that fully prepares a supplied ligand for the upcoming steps/aspects of 
     the EnzyRCD pipeline. A number of temporary files are created, so the result is a dictionary
-    which maps diffrent versions of the ligand to their respective local paths. 
+    which maps diffrent versions of the ligand to their respective local paths. Makes uses of 
+    caching mode for protonation states and conformers.
 
     Arguments:
         molfile: Path to the input ligand file.
@@ -664,7 +669,11 @@ def prepare_ligand(molfile: str, res_code: str,
         A Dict[str,str] mapping different versions of the ligand to their respective local paths.
 
     """
-    #TODO(CJ): need to check that res_code is either L01 or L02
+    
+    ALLOWED_RCs:List[str]="L01 L02".split()
+    if res_code not in ALLOWED_RCs:
+        eh.core._LOGGER.error(f"The supplied residue code '{res_code}' is invalid. Allowed are '{', '.join(ALLOWED_RCs)}'. Exiting...")
+        exit( 1 )
     #TODO(CJ): should probably check that the ligand is in the correct format -> maybe this isn't
     # necessary since it's checked elsewhere
     file_mapper: Dict[str, str] = {'input': str(molfile)}
@@ -679,8 +688,16 @@ def prepare_ligand(molfile: str, res_code: str,
     file_mapper['params'] = params_file
     file_mapper['pdb'] = pdb_file
     file_mapper['kekulized'] = kekulize(file_mapper['protonated'])
-    file_mapper['conformers'] = eh.interface.bcl.generate_conformers(
-        file_mapper['kekulized'])
+   
+    temp=Path(file_mapper['kekulized'])
+    temp = temp.parent / f"{temp.stem}_conformers.sdf"
+
+    if params.use_cache and temp.exists() and temp.stat().st_size > 0: #also checking that it isn't empty
+        file_mapper['conformers'] = str(temp)
+        eh.core._LOGGER.info(f"Using cached file {temp} for conformers...")
+    else:
+        file_mapper['conformers'] = eh.interface.bcl.generate_conformers(file_mapper['kekulized'])
+            
     file_mapper['conformer_library'] = fix_conformers(
         file_mapper['pdb'], file_mapper['conformers'], res_code)
     file_mapper['conformer_library'] = shutil.move(
@@ -712,29 +729,57 @@ def place_ligands(
     """
     #TODO(CJ): need to adjust grid search size based on how confidently 
     # we can place the ligands.
+    #eh.core._LOGGER.info(params)
     eh.core._LOGGER.info("Beginning ligand placement protocol...")
-    #TODO(CJ): figure out the "EnzyHTP" way of loading the residue names
-    cmd.delete('all')
-    cmd.load(stru_file)
-    stored.holder = []
-    cmd.iterate('all', 'stored.holder.append((chain, resi, resn))')
-    stored.holder = sorted(list(set(stored.holder)))
+    df:pd.DataFrame=eh.interface.pymol.collect(stru_file, "chain resi resn".split())
+    counter = defaultdict(set)
+    for i, row in df.iterrows():
+        counter[row.resn].add( (row.chain, row.resi) )
+    
+    has_l1, has_l2 = False, False
+    l2_exists:bool = bool(params.ligand_2)
 
-    ct = sum([pr[-1] in "L01 L02".split() for pr in stored.holder])
-
-    if ct == 2:
-        #TODO(CJ): implement errors for this stuff
-        # potential issues we can have:
-        # 1. placed, but atom names are NOT unique
-        # 2. multiple instances of the ligands
-        eh.core._LOGGER.info(
-            "L01 and L02 are already found in structure. No ligand placement necessary!"
-        )
-        return stru_file 
+    l1_status = counter.get('L01', None)
+    if l1_status is None:
+        eh.core._LOGGER.warning("Ligand L01 NOT found in supplied structure")
+    elif len(l1_status) > 1:
+        eh.core._LOGGER.error(f"Found {len(l1_status)} L01 ligands in supplied structure. Exiting...")
+        exit( 1 )
     else:
-        #TODO(CJ): This is where more stuff has to happen... alphafill etc
-        eh.core._LOGGER.info("Finished ligand placement protocol!")
-        return None
+        has_l1 = True
+
+    if l2_exists:
+        l2_status = counter.get('L02', None)
+        if l2_status is None:
+            eh.core._LOGGER.warning("Ligand L02 NOT found in supplied structure")
+        elif len(l2_status) > 1:
+            eh.core._LOGGER.error(f"Found {len(l2_status)} L02 ligands in supplied structure. Exiting...")
+            exit( 1 )
+        else:
+            has_l2 = True
+
+    if l2_exists:
+        if has_l1 and has_l2:
+            #TODO(CJ): implement errors for this stuff
+            # potential issues we can have:
+            # 1. placed, but atom names are NOT unique
+            # 2. multiple instances of the ligands
+            eh.core._LOGGER.info(
+                "L01 and L02 are already found in structure. No ligand placement necessary!"
+            )
+            return stru_file 
+
+        eh.core._LOGGER.info("Ligands L01 and L02 were not explicitly found in the structure. Trying fallback strategies...")
+    else:
+        if has_l1:
+            eh.core._LOGGER.info("L01 is already found in the structure. No ligand placement necessary!")
+            return stru_file 
+    #OK: at this point we need to check if there are two non-
+    exit( 1 )
+    #eh.core._LOGGER.info(
+    #TODO(CJ): This is where more stuff has to happen... alphafill etc
+    eh.core._LOGGER.info("Finished ligand placement protocol!")
+    return None
 
 
 def validate_cst( start:Union[str,Path,pd.DataFrame], cst :RosettaCst ) -> None:
@@ -786,7 +831,7 @@ def validate_cst( start:Union[str,Path,pd.DataFrame], cst :RosettaCst ) -> None:
         
         if len(row) == 0:
             eh.core._LOGGER.error(
-                f'Atom {cst.rchain_2}.{cst.rnum_1}.{cst.rname_1}.{ratom} does not exist'
+                f'Atom {cst.rchain_2}.{cst.rnum_2}.{cst.rname_2}.{ratom} does not exist'
             )
             bad_atom = True
 
@@ -797,7 +842,21 @@ def validate_cst( start:Union[str,Path,pd.DataFrame], cst :RosettaCst ) -> None:
 
 def add_constraints(current_structure: str,
                     params: ValidatedArgs) -> Tuple[str, str]:
-    """ """
+    """Method that adds the supplied constraints to the PDB file that will be input to RosettaLigand. Automatically
+    saves the updated .pdb file to a new file at the same location as the original file. Given input file 'path/to/file.pdb', 
+    new file is 'path/to/file_csts.pdb'.
+
+    Args:
+        current_structure: str() to the .pdb containing the structure.
+        params: The ValidatedArgs() namedtuple() from the parse_args() function.
+    
+    Returns:
+        A tuple with layout (modified_pdb, .cst file).
+
+    """
+    #TODO(CJ): should remove existing constraint remark lines in the .pdb file
+    fs.check_file_exists( current_structure )
+
     current_structure = Path(current_structure)
     cst_file, pdb_with_csts = str(
         current_structure.parent / "RDock.cst"
@@ -852,7 +911,17 @@ def add_constraints(current_structure: str,
 
 
 def handle_temp_files( params :ValidatedArgs, mapper1:Dict[str,str], mapper2:Dict[str,str] ) -> None:
-    """ """
+    """Method that cleans up temp files after the routine is run. Scans for temp files created for both 
+    ligand1 and ligand 2 and handles them as described in the params namedtuple(). Should not throw.
+
+    Args:
+        params:
+        mapper1:
+        mapper2:
+
+    Returns:
+        Nothing.
+    """
     for mapper in [mapper1, mapper2]:
         for ftype, fname in mapper.items():
             if ftype == 'input':
@@ -882,15 +951,15 @@ def main(params: ValidatedArgs) -> None:
     fs.safe_mkdir(params.work_dir)
     #TODO(CJ): give option to give the conformer files ahead of time
     #1. Mutate if necessary
+    current_structure:str = params.structure
     if params.mutations:
-        eh.mutate_pdb(params.structure,
+        current_structure = eh.mutate_pdb(params.structure,
                       mutations=params.mutation,
                       engine='rosetta')
         #TODO(CJ): relax here                      
 
     #TODO(CJ): make the work_dir if it doesnt exist
 
-    current_structure = params.structure
 
     if params.protonate_structure:
         parser = eh.structure.PDBParser()
@@ -906,7 +975,6 @@ def main(params: ValidatedArgs) -> None:
     #TODO(CJ): need to do relaxation here and also write out the structure
 
     l1_fm: Dict[str, str] = prepare_ligand(params.ligand_1, 'L01', params)
-
     if params.ligand_2:
         l2_fm: Dict[str, str] = prepare_ligand(params.ligand_2, 'L02', params)
 
