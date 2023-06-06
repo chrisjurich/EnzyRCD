@@ -11,7 +11,6 @@ import pandas as pd
 import enzy_htp as eh
 from rdkit import Chem
 from rdkit import RDLogger
-RDLogger.DisableLog('rdApp.*')
 
 from pathlib import Path
 from pymol import cmd, stored
@@ -19,42 +18,237 @@ from typing import List, Tuple, Dict, Union
 from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
 
-import pymol2  #TODO(CJ): add this to the main enzy_htp part
-import pymol.invocation
 
-pymol.invocation.parse_args(['pymol', '-q'])  # optional, for quiet flag
-pymol2.SingletonPyMOL().start()
 
-#TODO(CJ): need to add more attributes, I think including a work_dir structure
-
-ROOT_DIR: str = str(Path(__file__).parent.absolute())
-"""Path of the root dir of the project, where the EnzyRCD script is stored."""
-
-#TODO(CJ): move this to the rosetta interface file
 RosettaCst = namedtuple(
     'RosettaCst',
     'rname_1 rnum_1 ratoms_1 rchain_1 rname_2 rnum_2 ratoms_2 rchain_2 constraints'
 )
+#TODO(CJ): move this to the rosetta interface file
 
-RosettaCst.__doc__ = """namedtuple() that holds a Rosetta Constaint between two"""
+RosettaCst.__doc__ = """TODO"""
 
-ValidatedArgs = namedtuple(
-    'ValidatedArgs',
-    'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling use_cache'
-)
-ValidatedArgs.__doc__ = """namedtuple() that holds the arguments from the commandline parser after being treated and validated. Has the below 
-attributes:
+
+class RoutineConfig:
+    """Class that holds somewhat validated arguments used to run the EnzyRCD routine. Also serves
+    as a temporary holding place for the current structure file and ligand temp files. Will exit if an invalid
+    keyword argument is supplied to the constructor.
+
+    Attributes:
+        #TODO(CJ): do this one literally as the last step
+    """
+
+    def __init__(self, **kwargs):
+        """kwargs based constructor for initializing RoutineConfig()."""
+        self.start = time.time()
+        self.structure = str()
+        self.mutations = str()
+        self.pH = float()
+        self.conformer_engine = str()
+        self.n_conformers = int()
+        self.ligand_1 = str()
+        self.ligand_2 = str()
+        self.constraints = List[RosettaCst]
+        self.n_structures = int()
+        self.work_dir = str()
+        self.top_n = int()
+        self.temp_handling = str()
+        self.use_cache = bool()
+        self.l1_fm = dict()
+        self.l2_fm = dict()
+        self.option_file = str()
+        self.cst_file = str()
+        
+        allowed_keywords:List[str]='structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling use_cache'.split()
+        
+        bad:bool=False
+        for k,v in kwargs.items():
+            if k not in allowed_keywords:
+                bad = True
+                eh.core._LOGGER.error(f"The keyword '{k}' is invalid.")
+            else:
+                setattr(self, k, v)
+
+        if bad:
+            eh.core._LOGGER.error(f"Invalid keywords supplied to RoutineConfig() class. Allowed are: {', '.join(allowed_keywords)}")
+            eh.core._LOGGER.error("Exiting...")
+            exit( 1 )
+
+
+def init(params:RoutineConfig) -> None:
+    """Initialization function. Sets up the environment for routine execution by making all associated applications quiet and making
+    the working directory if it does not exist.
+
+    Args:
+        params: The RoutineConfig() class.
+
+    Returns:
+        Nothing.
+    """
+    eh.core._LOGGER.info("Initializing program...")
     
-    - structure: str path to the structure to do analysis on
-    - mutations: the mutations to apply to the structure as str()'s (optional)
-    - pH: the pH to protonate the system at
-    - conformer_engine: the name of the engine to build conformers of the ligands with
-    - n_conformers: the number of conformers to make for each ligand
-    - ligand_1:
+    eh.core._LOGGER.info("Turning off child module logging...")
+    RDLogger.DisableLog('rdApp.*')
+    pymol.invocation.parse_args(['pymol', '-q'])  # optional, for quiet flag
+    pymol2.SingletonPyMOL().start()
+    #redirect_stdout() 
+
+    # making the working directory... maybe should clean this out first
+    eh.core._LOGGER.info(f"Creating working directory '{params.work_dir}'...")
+    fs.safe_mkdir(params.work_dir)
+
+    # checking if the required elements are present 
+    #TODO(CJ)
+    #eh.core._LOGGER.info("Checking for required packages...")
+    #missing_elements:bool=False 
+    #
+    #if not eh.interface.bcl.compatible_env_:
+    #    eh.core._LOGGER.warning("Missing elements for BCL!!")
+    #    missing_elements = True
+
+    #if not eh.interface.moe.compatible_env_:
+    #    eh.core._LOGGER.warning("Missing elements for MOE!!")
+    #    missing_elements = True
+
+    #if not eh.interface.rosetta.compatible_env_:
+    #    eh.core._LOGGER.warning("Missing elements for Rosetta!!")
+    #    missing_elements = True
+
+    #
+    #if missing_elements:
+    #    eh.core._LOGGER.error("Missing environment elements. Make sure all are available in $PATH present and re-run. Exiting...")
+    #    exit( 1 )
 
 
-"""
-#TODO(CJ): add documentation for the attributes -> finish this
+def canonicalize( params:RoutineConfig ) -> None:
+    """
+    
+    Args:
+        params: A RoutineConfig() class object.
+    """
+    eh.core._LOGGER.info("Canonicalizing system...")
+    eh.core._LOGGER.info(f"Scanning system found in '{params.structure}'")
+    df:pd.DataFrame = eh.interface.pymol.collect( params.structure, "chain resn resi q".split())
+    df['resi'] = df.resi.astype(int)
+
+    __cmd = eh.interface.pymol.cmd
+
+    __cmd.delete('all')
+    __cmd.load(params.structure)
+    
+    if df.resi[0] != 1:
+        eh.core._LOGGER.warning("First residue is not indexed to 1! Renumbering system.")
+        exit( 1 )
+        #TODO(CJ): this is where the renumbering will happen
+
+    aa_only:Dict[str,bool] = dict( zip(list(df.chain.unique()), [True]*len(df.chain.unique())))
+
+    visited = set()
+    for i,row in df.iterrows():
+        key = (row.chain, row.resi, row.resn)
+        if key in visited:
+            continue
+
+        visited.add( key )
+
+        if row.resn not in eh.chemical.residue.THREE_LETTER_AA_MAPPER and row.resn.upper() not in "MG ZN".split():
+            aa_only[row.chain] = False
+            eh.core._LOGGER.info(f"Found non-amino acid residue {row.chain}.{row.resi}.{row.resn}")
+
+    if 'A' not in aa_only:  
+        eh.core._LOGGER.error("Fatal error. EnzyRCD expects an enzyme system where chain A is only amino acids/catalytic metals. Exiting...")
+        exit( 1 )
+
+
+    to_remove:List[str] = list()
+    for chain_name, aa_status in aa_only.items():
+        if aa_status:
+            to_remove.append(chain_name)
+
+        if chain_name == 'A':
+            continue
+        
+        if aa_status:   
+            eh.core._LOGGER.info(f"Found polypeptide only chain {chain_name}. Appending to chain A to canonicalize")
+            print("need to do this")
+            exit( 1 )
+
+    for tr in to_remove:
+        del aa_only[tr]
+
+    if not aa_only:
+        
+        if not params.ligand_1 and not params.ligand_1:
+            eh.core._LOGGER.error("No ligands present in either supplied file or on the commandline. Exiting...")
+            exit( 1 )
+        
+        eh.core._LOGGER.info("No ligands present in supplied structure but available in supplied ligand files.")
+
+    else:
+        if len(aa_only) > 2:
+            eh.core._LOGGER.error(f"Expected at most two non-polypeptide chains Y and Z with ligands L01 and L02, respectively. Instead, found {len(aa_only)}. Exiting...")
+            exit( 1 )
+
+        aa_names = list(aa_only.keys())
+
+        if len(aa_only) == 1 and aa_names != ['Y']:
+            eh.core._LOGGER.info(f"Found one non-polypeptide chain named {aa_names[0]}. Renaming to chain Y.")
+            #TODO(CJ): rename the chain
+            exit( 1 )
+
+        if len(aa_only) == 2 and sorted(aa_names) != ['Y', 'Z']:
+            eh.core._LOGGER.info(f"Found two non-polypeptide chains named {aa_names[0]} and {aa_names[1]}. Renaming to chain Y and Z.")
+            #TODO(CJ: rename the chains 
+            exit( 1 )
+    
+    #TODO(CJ): apply changes to rosetta constraints
+    inpath = Path(params.structure)
+    outfile = Path(params.work_dir) / f"{inpath.stem}_canonical.pdb"
+    
+    __cmd.save( outfile )
+
+    canonical:pd.DataFrame = eh.interface.pymol.collect( params.structure, "chain resn resi q".split())
+    canonical['resi'] = df.resi.astype(int)
+
+    #TODO(CJ): change occupancies to 1.0
+    #TODO(CJ): change the HID/HIE/HIP to HIS
+
+    if len(df) != len(canonical):
+        eh.core._LOGGER.error(f"Error during canonicalization, differing number of atoms. Compare structures in {params.structure} and {outfile}. Exiting...")
+        exit( 1 )
+
+    params.structure = str( outfile )
+
+def parse_constraints( args: RoutineConfig ) -> List[RosettaCst]:
+    """ TODO(CJ) """
+    result:List[RosettaCst] = list()
+    c_file = Path(args.constraints)
+    
+    if likely_a_file( args.constraints):
+        fs.check_file_exists( c_file )
+
+    if c_file.exists():
+        content:str = fs.content_from_file(c_file)
+        content = ''.join(content.split())
+        if not content: 
+            eh.core._LOGGER.warning(f"The supplied file '{args.constraints}' contained no constraints. Continuing...")
+            return result 
+    else:
+        content:str=args.constraints
+        if not content:
+            eh.core._LOGGER.warning("The supplied argument for --constraints is empty. Continuing...")
+            return result
+    
+    for chunk in content.split('),('):
+        if chunk[0] != '(':
+            chunk = '(' + chunk
+        if chunk[-1] != ')':
+            chunk += ')'
+    
+        result.append(parse_rosetta_cst(chunk))
+
+    return result
+
 
 def likely_a_file( raw: str ) -> bool:
     """Applies heuristics to guess if the supplied str() is a filepath or not. Checks if:
@@ -220,8 +414,10 @@ def check_residue_id(res_id: str) -> None:
         exit(1)
 
 
-def parse_args() -> ValidatedArgs:
-    """Commandline argument parser. Performs basic checks on the inputs and slightly rearranges them.
+def parse_args() -> RoutineConfig:
+    """Commandline argument parser. Performs basic checks on the inputs and slightly rearranges them. Note that other, 
+    more advanced checks are performed in the canonicalize_system() function.
+    
     Returns:
         A namedtuple with validated and treated arguments from the commandline.
     """
@@ -349,19 +545,16 @@ def parse_args() -> ValidatedArgs:
         )
         exit(1)
 
-    if not args.ligand_1:
-        eh.core._LOGGER.error("--ligand_1 is a required argument.")
-        exit(1)
 
     mutations: List[str] = check_mutations(args)
 
     ligand_1, ligand_2 = str(), str()
     ligand_1_name, ligand_2_name = str(), str()
 
-    fs.check_file_exists(args.ligand_1)
 
-    ligand_1 = args.ligand_1
-
+    if args.ligand_1:
+        fs.check_file_exists(args.ligand_1)
+        ligand_1 = args.ligand_1
 
     if args.ligand_2:
         fs.check_file_exists(args.ligand_2)
@@ -370,34 +563,9 @@ def parse_args() -> ValidatedArgs:
     constraints: List[RosettaCst] = list()
 
     if args.constraints:
-        c_file = Path(args.constraints)
-        if likely_a_file( args.constraints):
-            fs.check_file_exists( c_file )
+        constraints = parse_constraints( args )
 
-        has_csts:bool=False
-
-        if c_file.exists():
-            content:str = fs.content_from_file(c_file)
-            content = ''.join(content.split())
-            if not content: 
-                eh.core._LOGGER.warning(f"The supplied file '{args.constraints}' contained no constraints. Continuing...")
-                has_csts = True
-        else:
-            content:str=args.constraints
-            if not content:
-                eh.core._LOGGER.warning("The supplied argument for --constraints is empty. Continuing...")
-                has_csts = True
-        
-        if not has_csts: 
-            for chunk in content.split('),('):
-                if chunk[0] != '(':
-                    chunk = '(' + chunk
-                if chunk[-1] != ')':
-                    chunk += ')'
-
-                constraints.append(parse_rosetta_cst(chunk))
-
-    return ValidatedArgs(
+    return RoutineConfig(
         structure=args.structure,
         pH=args.pH,
         mutations=mutations,
@@ -416,7 +584,7 @@ def parse_args() -> ValidatedArgs:
 
 
 def make_options_file(stru_file: str,
-                      params: ValidatedArgs,
+                      params: RoutineConfig,
                       lig_params_1: str,
                       lig_params_2: str = None,
                       work_dir: str = None,
@@ -432,6 +600,8 @@ def make_options_file(stru_file: str,
     Returns:
         The path to the options file as a str().
     """
+
+
     #TODO(CJ): this should check if the stru_file is properly formatted... i.e. A, Y, Z
     work_dir = params.work_dir
     stru_file = Path(stru_file)
@@ -464,7 +634,7 @@ def make_options_file(stru_file: str,
         content.extend(
             ["-enzdes", f"    -cstfile '{Path(cst_file).absolute()}'"])
 
-    selected_protocol:str = f"{ROOT_DIR}/xmls/"
+    selected_protocol:str = f"{Path(__file__).parent.absolute()}/xmls/"
     if lig_params_2:
         selected_protocol += "2_ligands.xml"
     else:
@@ -653,8 +823,7 @@ def kekulize(in_file: str, out_format: str = '.sdf') -> str:
     return str(outfile)
 
 
-def prepare_ligand(molfile: str, res_code: str,
-                   params: ValidatedArgs) -> Dict[str, str]:
+def prepare_ligands(params: RoutineConfig) -> None:
     """Convenience method that fully prepares a supplied ligand for the upcoming steps/aspects of 
     the EnzyRCD pipeline. A number of temporary files are created, so the result is a dictionary
     which maps diffrent versions of the ligand to their respective local paths. Makes uses of 
@@ -663,7 +832,7 @@ def prepare_ligand(molfile: str, res_code: str,
     Arguments:
         molfile: Path to the input ligand file.
         res_code: The three letter PDB code for the ligand. MUST BE L01 or L02.
-        params: The ValidatedArgs namedtuple() that comes from the parse_args() function.
+        params: The RoutineConfig namedtuple() that comes from the parse_args() function.
 
     Returns:
         A Dict[str,str] mapping different versions of the ligand to their respective local paths.
@@ -691,7 +860,8 @@ def prepare_ligand(molfile: str, res_code: str,
    
     temp=Path(file_mapper['kekulized'])
     temp = temp.parent / f"{temp.stem}_conformers.sdf"
-
+    
+    #TODO(CJ): count the number of sp3 atoms in the system
     if params.use_cache and temp.exists() and temp.stat().st_size > 0: #also checking that it isn't empty
         file_mapper['conformers'] = str(temp)
         eh.core._LOGGER.info(f"Using cached file {temp} for conformers...")
@@ -714,8 +884,7 @@ def prepare_ligand(molfile: str, res_code: str,
 
 
 def place_ligands(
-        stru_file:str,
-        params: ValidatedArgs
+        params: RoutineConfig
         ) -> str:
     """Method that places the respective ligands in the structure
 
@@ -840,15 +1009,14 @@ def validate_cst( start:Union[str,Path,pd.DataFrame], cst :RosettaCst ) -> None:
         exit( 1 )
 
 
-def add_constraints(current_structure: str,
-                    params: ValidatedArgs) -> Tuple[str, str]:
+def add_constraints(params: RoutineConfig) -> None:
     """Method that adds the supplied constraints to the PDB file that will be input to RosettaLigand. Automatically
     saves the updated .pdb file to a new file at the same location as the original file. Given input file 'path/to/file.pdb', 
     new file is 'path/to/file_csts.pdb'.
 
     Args:
         current_structure: str() to the .pdb containing the structure.
-        params: The ValidatedArgs() namedtuple() from the parse_args() function.
+        params: The RoutineConfig() namedtuple() from the parse_args() function.
     
     Returns:
         A tuple with layout (modified_pdb, .cst file).
@@ -910,7 +1078,7 @@ def add_constraints(current_structure: str,
 
 
 
-def handle_temp_files( params :ValidatedArgs, mapper1:Dict[str,str], mapper2:Dict[str,str] ) -> None:
+def handle_temp_files( params :RoutineConfig, mapper1:Dict[str,str], mapper2:Union[Dict[str,str], None] ) -> None:
     """Method that cleans up temp files after the routine is run. Scans for temp files created for both 
     ligand1 and ligand 2 and handles them as described in the params namedtuple(). Should not throw.
 
@@ -923,6 +1091,9 @@ def handle_temp_files( params :ValidatedArgs, mapper1:Dict[str,str], mapper2:Dic
         Nothing.
     """
     for mapper in [mapper1, mapper2]:
+        if not mapper:
+            continue
+
         for ftype, fname in mapper.items():
             if ftype == 'input':
                 continue
@@ -939,60 +1110,37 @@ def handle_temp_files( params :ValidatedArgs, mapper1:Dict[str,str], mapper2:Dic
     fs.safe_rm( Path(params.work_dir) / "ROSETTA_CRASH.log" ) #TODO(CJ): probably should be a rosetta thing
 
 
-def main(params: ValidatedArgs) -> None:
-    """ Main routine """
-    #TODO(CJ): actually use the pH that is supplied
-    #TODO(CJ): need to change all occupancies to 1.00 if needed
+def mutate( params : RoutineConfig ) -> None:
+    """Wrapper function that performs mutations specified on the specified structure file
+
+    Args:
+        params: A RoutineConfig() class.
+
+    Returns:
+        Nothing.
+    """
+    if not params.mutations:
+        eh.core._LOGGER.info("No mutations found.")
+        return
+
+    eh.core._LOGGER.info(f"Applying mutation(s) {', '.join(params.mutations)} using Rosetta.")
     
-    #TODO(CJ): canonicalize the system -> Update the chains, mutations and constraints 
-    redirect_stdout() 
+    current_structure:str = eh.mutate_pdb(params.structure,
+                  mutations=params.mutation,
+                  engine='rosetta')
 
-    start = time.time()
-    fs.safe_mkdir(params.work_dir)
-    #TODO(CJ): give option to give the conformer files ahead of time
-    #1. Mutate if necessary
-    current_structure:str = params.structure
-    if params.mutations:
-        current_structure = eh.mutate_pdb(params.structure,
-                      mutations=params.mutation,
-                      engine='rosetta')
-        #TODO(CJ): relax here                      
-
-    #TODO(CJ): make the work_dir if it doesnt exist
+    params.structure = curren-structure 
+    eh.core._LOGGER.info(f"Mutagenesis complete. Current file is {current_structure}")
 
 
-    if params.protonate_structure:
-        parser = eh.structure.PDBParser()
-        structure = parser.get_structure(params.structure)
-        eh.preparation.protonate_stru(structure, ph=params.pH)
-        content:str = parser.get_file_str(structure)
-        content=re.sub('HID|HIE','HIS',content)
-        prot = Path( params.structure )
-        new_name = f"{prot.parent}/{prot.stem}_prot.pdb"
-        fs.write_lines(new_name, content.splitlines())
-        current_structure = new_name
+def relax( params: RoutineConfig ) -> None:
+    """ 
+    
+    Args:
+        
+    Returns:
 
-    #TODO(CJ): need to do relaxation here and also write out the structure
-
-    l1_fm: Dict[str, str] = prepare_ligand(params.ligand_1, 'L01', params)
-    if params.ligand_2:
-        l2_fm: Dict[str, str] = prepare_ligand(params.ligand_2, 'L02', params)
-
-    current_structure = place_ligands(current_structure, params)
-    (current_structure, cst_file) = add_constraints(current_structure, params)
-
-    (options_file, score_file) = make_options_file(
-        current_structure,
-        params,
-        lig_params_1=l1_fm['params'],
-        lig_params_2=l2_fm['params'] if params.ligand_2 else None,
-        work_dir=Path(params.structure).parent,
-        cst_file=cst_file)
-
-    fs.safe_rm(score_file)
-    #fs.safe_rm( l1_fm[1] )
-    #fs.safe_rm( ligand_2_parameters[1] )
-    start_dir: str = os.getcwd()
+    """
 
     eflags: List[str] = ['-in:file:extra_res_fa', str(l1_fm['params'])]
 
@@ -1002,23 +1150,78 @@ def main(params: ValidatedArgs) -> None:
     start_score: float = eh.interface.rosetta.score(current_structure,
                                                     extra_flags=eflags)
 
+    
+    # if there is a mutation you have to minimize regardless
+
+
     if start_score >= 0.0:
         eh.core._LOGGER.error(
             f"The starting structure has a REU >= 0 ({start_score:.3f}). Relax/minmize the starting structure and re-run EnzyRCD on it. Exiting..."
         )
         exit(1)
+    
+    #TODO(CJ): add the relaxation in here
+
+
+def dock(params:RoutineConfig) -> None:
+    """
+    
+    Args:
+        params: The RoutineConfig() class.
+
+    Returns:
+        Nothing.
+    """
+    fs.safe_rm(score_file)
+    #fs.safe_rm( l1_fm[1] )
+    #fs.safe_rm( ligand_2_parameters[1] )
+    start_dir: str = os.getcwd()
+
 
     os.chdir(params.work_dir)
     eh.interface.rosetta.run_rosetta_scripts([f"@options.txt"])
     os.chdir(start_dir)
 
+
+def report_and_cleanup(params: RoutineConfig) -> None: 
+    """Ending function of the routine. Logs results, time and 
+
+    Args:
+        params: The RoutineConfig() class.
+
+    Returns:
+        Nothing.
+    """
+    #TODO(CJ): this is the part where I will check if the constraints are 
+    # actually satisfied
     score_csv: str = log_results(score_file, params.top_n)
+    handle_temp_files( params, l1_fm, l2_fm if params.ligand_2 else None ) 
+    log_elapsed_time(params)
 
-    handle_temp_files( params, l1_fm, l2_fm  ) 
 
-    elapsed = time.time() - start
-    log_elapsed_time(elapsed)
 
+def main(params: RoutineConfig ) -> None:
+    """ Main routine """
+    
+    init(params)
+    
+    canonicalize(params)
+
+    mutate(params)
+
+    prepare_ligands(params)
+
+    place_ligands(params)
+    
+    add_constraints(params)
+
+    relax(params)
+    
+    make_options_file(parms)
+
+    dock(params)
+    
+    report_and_cleanup(params)
 
 if __name__ == '__main__':
     main(parse_args())
