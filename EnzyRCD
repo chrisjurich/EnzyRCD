@@ -3,6 +3,7 @@ import re
 import os
 import sys
 import time
+import rdkit
 import shutil
 import argparse
 import contextlib
@@ -10,6 +11,7 @@ import numpy as np
 import pandas as pd 
 import enzy_htp as eh
 from rdkit import Chem
+from copy import deepcopy
 from rdkit import RDLogger
 
 from pathlib import Path
@@ -47,7 +49,9 @@ class RoutineConfig:
         self.conformer_engine = str()
         self.n_conformers = int()
         self.ligand_1 = str()
+        self.l1_native = False
         self.ligand_2 = str()
+        self.l2_native = False
         self.constraints = List[RosettaCst]
         self.n_structures = int()
         self.work_dir = str()
@@ -58,6 +62,8 @@ class RoutineConfig:
         self.l2_fm = dict()
         self.option_file = str()
         self.cst_file = str()
+        self.score_file = str()
+        self.option_file = str()
         
         allowed_keywords:List[str]='structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling use_cache'.split()
         
@@ -85,13 +91,15 @@ def init(params:RoutineConfig) -> None:
     Returns:
         Nothing.
     """
+    import pymol
+    import pymol2
     eh.core._LOGGER.info("Initializing program...")
     
     eh.core._LOGGER.info("Turning off child module logging...")
     RDLogger.DisableLog('rdApp.*')
     pymol.invocation.parse_args(['pymol', '-q'])  # optional, for quiet flag
     pymol2.SingletonPyMOL().start()
-    #redirect_stdout() 
+    redirect_stdout() 
 
     # making the working directory... maybe should clean this out first
     eh.core._LOGGER.info(f"Creating working directory '{params.work_dir}'...")
@@ -170,8 +178,16 @@ def canonicalize( params:RoutineConfig ) -> None:
         
         if aa_status:   
             eh.core._LOGGER.info(f"Found polypeptide only chain {chain_name}. Appending to chain A to canonicalize")
-            print("need to do this")
-            exit( 1 )
+            temp_df:pd.DataFrame = eh.interface.pymol.collect( 'memory', "chain resn resi".split())
+            temp_df['resi'] = df.resi.astype(int)
+            temp_df.drop_duplicates(inplace=True)  
+            start:int = temp_df[temp_df.chain=='A'].resi.max()+1
+            chain_df = temp_df[temp_df.chain==chain_name]
+            eh.core._LOGGER.info(f"Appending {len(chain_df)} residues to end of chain A. Starting at index {start}.")
+            for i, row in chain_df.iterrows():
+                __cmd.alter(f"chain {row.chain} and resi {row.resi}", f'resi="{start}"')
+                start += 1
+            __cmd.alter(f"chain {chain_name}", 'chain="A"')
 
     for tr in to_remove:
         del aa_only[tr]
@@ -200,24 +216,53 @@ def canonicalize( params:RoutineConfig ) -> None:
             eh.core._LOGGER.info(f"Found two non-polypeptide chains named {aa_names[0]} and {aa_names[1]}. Renaming to chain Y and Z.")
             #TODO(CJ: rename the chains 
             exit( 1 )
-    
+
+        if 'Y' in aa_names and not params.ligand_1:
+            params.l1_native = True
+            outfile = Path(params.work_dir) / 'L01.mol2' 
+            params.ligand_1 = outfile
+            eh.core._LOGGER.info(f"Chain Y is a ligand and exists but has not been separated. Exporting to '{outfile}'")
+            __cmd.save(outfile, "chain Y")
+
+
+        if 'Z' in aa_names and not params.ligand_2:
+            params.l2_native = True
+            outfile = Path(params.work_dir) / 'L02.mol2' 
+            params.ligand_2 = outfile
+            eh.core._LOGGER.info(f"Chain Z is a ligand and exists but has not been separated. Exporting to '{outfile}'")
+            __cmd.save(outfile, "chain Z")
+
+
+    q_lt_1:bool = df.q.min() < 1.00
+
+    if q_lt_1:  
+        eh.core._LOGGER.info(f"Some occupancies are less than 1.0. Now setting all atoms to 1.0")
+        __cmd.alter('all', 'q=1.00')
+
+
     #TODO(CJ): apply changes to rosetta constraints
     inpath = Path(params.structure)
     outfile = Path(params.work_dir) / f"{inpath.stem}_canonical.pdb"
-    
+
+
     __cmd.save( outfile )
 
-    canonical:pd.DataFrame = eh.interface.pymol.collect( params.structure, "chain resn resi q".split())
+    canonical:pd.DataFrame = eh.interface.pymol.collect( params.structure, "chain resn resi".split())
     canonical['resi'] = df.resi.astype(int)
 
-    #TODO(CJ): change occupancies to 1.0
-    #TODO(CJ): change the HID/HIE/HIP to HIS
+    for i,row in canonical.drop_duplicates().iterrows():
+
+        if row.resn in "HID HIE HIP".split():
+            eh.core._LOGGER.info(f"Found AMBER-typed histidine {row.chain}.{row.resn}.{row.resi}. Changing to residue name to HIS")
+            __cmd.alter(f"chain {row.chain} and resi {row.resi}", "resn='HIS'")
+
 
     if len(df) != len(canonical):
         eh.core._LOGGER.error(f"Error during canonicalization, differing number of atoms. Compare structures in {params.structure} and {outfile}. Exiting...")
         exit( 1 )
 
     params.structure = str( outfile )
+
 
 def parse_constraints( args: RoutineConfig ) -> List[RosettaCst]:
     """ TODO(CJ) """
@@ -583,12 +628,7 @@ def parse_args() -> RoutineConfig:
         )
 
 
-def make_options_file(stru_file: str,
-                      params: RoutineConfig,
-                      lig_params_1: str,
-                      lig_params_2: str = None,
-                      work_dir: str = None,
-                      cst_file: str = None) -> str:
+def make_options_file(params) -> str:
     """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
     Args:
         stru_file:
@@ -604,7 +644,7 @@ def make_options_file(stru_file: str,
 
     #TODO(CJ): this should check if the stru_file is properly formatted... i.e. A, Y, Z
     work_dir = params.work_dir
-    stru_file = Path(stru_file)
+    stru_file = Path(params.structure)
 
     if not work_dir:
         work_dir = str(stru_file.parent)
@@ -612,11 +652,11 @@ def make_options_file(stru_file: str,
     content: List[str] = [
         "-in:file",
         f"  -s '{stru_file.name}'",
-        f"  -extra_res_fa '{Path(lig_params_1).absolute()}'",
+        f"  -extra_res_fa '{Path(params.l1_fm['params']).absolute()}'",
     ]
 
-    if lig_params_2:
-        content.append(f"  -extra_res_fa '{Path(lig_params_2).absolute()}'", )
+    if params.ligand_2:
+        content.append(f"  -extra_res_fa '{Path(params.l2_fm['params']).absolute()}'", )
 
     content.extend([
         "-run:preserve_header",
@@ -629,13 +669,13 @@ def make_options_file(stru_file: str,
         "    -ignore_ligand_chi true",
     ])
 
-    if cst_file:
+    if params.cst_file:
         #TODO(CJ): need to add in the constraints here
         content.extend(
-            ["-enzdes", f"    -cstfile '{Path(cst_file).absolute()}'"])
+            ["-enzdes", f"    -cstfile '{Path(params.cst_file).absolute()}'"])
 
     selected_protocol:str = f"{Path(__file__).parent.absolute()}/xmls/"
-    if lig_params_2:
+    if params.ligand_2:
         selected_protocol += "2_ligands.xml"
     else:
         selected_protocol += "1_ligand.xml"
@@ -656,10 +696,15 @@ def make_options_file(stru_file: str,
 
     fs.write_lines(fname, content)
 
+    fs.safe_rmdir(f"{work_dir}/complexes/")
     fs.safe_mkdir(f"{work_dir}/complexes/")
+    
+    #TODO(CJ): clean out the complexes folder if it already exists
+    
+    params.score_file: str = f"{work_dir}/complexes/score.sc"
+    params.option_file = fname.absolute()
 
-    scorefile: str = f"{work_dir}/complexes/score.sc"
-    return (fname, scorefile)
+    fs.safe_rm( params.score_file )
 
 
 def fix_conformers(template: str, conformers: str, res_code: str) -> str:
@@ -716,7 +761,7 @@ def protonate_ligand(molfile: str) -> str:
     return eh.interface.pymol.convert(protonated, new_ext='.sdf')
 
 
-def log_elapsed_time(elapsed: int) -> None:
+def log_elapsed_time(params : RoutineConfig ) -> None:
     """Logs the elapsed time of the subroutine. Takes an arguments in seconds and converts it to days,
     hours, minutes, seconds, format.
 
@@ -725,6 +770,7 @@ def log_elapsed_time(elapsed: int) -> None:
     Returns:
         Nothing.
     """
+    elapsed = time.time() - params.start
     days, hours, minutes, seconds = 0, 0, 0, 0
 
     minutes_denom = 60
@@ -818,7 +864,8 @@ def kekulize(in_file: str, out_format: str = '.sdf') -> str:
         eh.interface.pymol.convert(temp_file, new_ext='.mol2')
         fs.safe_rm(temp_file)
     else:
-        raise TypeError('#TODO(CJ): need a better error here')
+        eh.core._LOGGER.error(f"The supplied extension {new_ext} is not supported. .sdf and .mol2 are currently supported. Exiting...")
+        exit( 1 )
 
     return str(outfile)
 
@@ -838,49 +885,54 @@ def prepare_ligands(params: RoutineConfig) -> None:
         A Dict[str,str] mapping different versions of the ligand to their respective local paths.
 
     """
-    
-    ALLOWED_RCs:List[str]="L01 L02".split()
-    if res_code not in ALLOWED_RCs:
-        eh.core._LOGGER.error(f"The supplied residue code '{res_code}' is invalid. Allowed are '{', '.join(ALLOWED_RCs)}'. Exiting...")
-        exit( 1 )
-    #TODO(CJ): should probably check that the ligand is in the correct format -> maybe this isn't
-    # necessary since it's checked elsewhere
-    file_mapper: Dict[str, str] = {'input': str(molfile)}
-    file_mapper['deprotonated'] = eh.interface.pymol.de_protonate(
-        file_mapper['input'])
-    file_mapper['deprotonated'] = kekulize(file_mapper['deprotonated'],
-                                           '.mol2')
-    file_mapper['protonated'] = eh.interface.moe.protonate(
-        file_mapper['deprotonated'])
-    (params_file, pdb_file) = eh.interface.rosetta.parameterize_ligand(
-        file_mapper['protonated'], res_code)
-    file_mapper['params'] = params_file
-    file_mapper['pdb'] = pdb_file
-    file_mapper['kekulized'] = kekulize(file_mapper['protonated'])
-   
-    temp=Path(file_mapper['kekulized'])
-    temp = temp.parent / f"{temp.stem}_conformers.sdf"
-    
-    #TODO(CJ): count the number of sp3 atoms in the system
-    if params.use_cache and temp.exists() and temp.stat().st_size > 0: #also checking that it isn't empty
-        file_mapper['conformers'] = str(temp)
-        eh.core._LOGGER.info(f"Using cached file {temp} for conformers...")
-    else:
-        file_mapper['conformers'] = eh.interface.bcl.generate_conformers(file_mapper['kekulized'])
+    def _impl(params, molfile : str, res_code : str) -> Dict[str,str]:
+        """ """
+        file_mapper: Dict[str, str] = {'input': str(molfile)}
+        file_mapper['deprotonated'] = eh.interface.pymol.de_protonate(
+            file_mapper['input'])
+        try:
+            file_mapper['deprotonated'] = kekulize(file_mapper['deprotonated'],
+                                                   '.mol2')
+        except rdkit.Chem.rdchem.KekulizeException as exe:
+            eh.core._LOGGER.error(f"Unable to kekulize molecule in '{file_mapper['deprotonated']}'. Check that the structure is valid and try again. Exiting...")
+            exit( 1 )
             
-    file_mapper['conformer_library'] = fix_conformers(
-        file_mapper['pdb'], file_mapper['conformers'], res_code)
-    file_mapper['conformer_library'] = shutil.move(
-        file_mapper['conformer_library'],
-        Path(params.work_dir) / Path(file_mapper['conformer_library']).name)
-    eh.interface.rosetta.add_conformers(file_mapper['params'],
-                                        file_mapper['conformer_library'])
+        file_mapper['protonated'] = eh.interface.moe.protonate(
+            file_mapper['deprotonated'])
+        (params_file, pdb_file) = eh.interface.rosetta.parameterize_ligand(
+            file_mapper['protonated'], res_code)
+        file_mapper['params'] = params_file
+        file_mapper['pdb'] = pdb_file
+        file_mapper['kekulized'] = kekulize(file_mapper['protonated'])
+   
+        temp=Path(file_mapper['kekulized'])
+        temp = temp.parent / f"{temp.stem}_conformers.sdf"
+        
+        #TODO(CJ): count the number of sp3 atoms in the system
+        if params.use_cache and temp.exists() and temp.stat().st_size > 0: #also checking that it isn't empty
+            file_mapper['conformers'] = str(temp)
+            eh.core._LOGGER.info(f"Using cached file {temp} for conformers...")
+        else:
+            file_mapper['conformers'] = eh.interface.bcl.generate_conformers(file_mapper['kekulized'])
+                
+        file_mapper['conformer_library'] = fix_conformers(
+            file_mapper['pdb'], file_mapper['conformers'], res_code)
+        file_mapper['conformer_library'] = shutil.move(
+            file_mapper['conformer_library'],
+            Path(params.work_dir) / Path(file_mapper['conformer_library']).name)
+        eh.interface.rosetta.add_conformers(file_mapper['params'],
+                                            file_mapper['conformer_library'])
 
-    file_mapper['params'] = shutil.move(
-        file_mapper['params'],
-        Path(params.work_dir) / Path(file_mapper['params']).name)
-    #TODO(CJ): need to move the conformers here and set them up correctly
-    return file_mapper
+        file_mapper['params'] = shutil.move(
+            file_mapper['params'],
+            Path(params.work_dir) / Path(file_mapper['params']).name)
+        #TODO(CJ): need to move the conformers here and set them up correctly
+        return deepcopy(file_mapper)
+    
+    params.l1_fm = _impl(params, params.ligand_1, "L01")
+    
+    if params.ligand_2:
+        params.l2_fm = _impl(params, params.ligand_2, "L02")
 
 
 def place_ligands(
@@ -899,8 +951,9 @@ def place_ligands(
     #TODO(CJ): need to adjust grid search size based on how confidently 
     # we can place the ligands.
     #eh.core._LOGGER.info(params)
+    __cmd = eh.interface.pymol.cmd
     eh.core._LOGGER.info("Beginning ligand placement protocol...")
-    df:pd.DataFrame=eh.interface.pymol.collect(stru_file, "chain resi resn".split())
+    df:pd.DataFrame=eh.interface.pymol.collect(params.structure, "chain resi resn".split())
     counter = defaultdict(set)
     for i, row in df.iterrows():
         counter[row.resn].add( (row.chain, row.resi) )
@@ -934,15 +987,27 @@ def place_ligands(
             # 1. placed, but atom names are NOT unique
             # 2. multiple instances of the ligands
             eh.core._LOGGER.info(
-                "L01 and L02 are already found in structure. No ligand placement necessary!"
+                "L01 and L02 are already found in structure. Ligand placement can be achieved via direct transplat!"
             )
-            return stru_file 
+            __cmd.delete('all')
+            __cmd.load(params.structure)
+            __cmd.remove('resn L01')
+            __cmd.load(params.l1_fm['pdb'])
+            __cmd.alter('resn L01', "chain='Y'")
+            
+            if params.ligand_2:
+                __cmd.remove('resn L02')
+                __cmd.load(params.l2_fm['pdb'])
+                __cmd.alter('resn L02', "chain='Z'")
+
+            __cmd.save(params.structure)
+            return 
 
         eh.core._LOGGER.info("Ligands L01 and L02 were not explicitly found in the structure. Trying fallback strategies...")
     else:
         if has_l1:
             eh.core._LOGGER.info("L01 is already found in the structure. No ligand placement necessary!")
-            return stru_file 
+            return  
     #OK: at this point we need to check if there are two non-
     exit( 1 )
     #eh.core._LOGGER.info(
@@ -1023,9 +1088,11 @@ def add_constraints(params: RoutineConfig) -> None:
 
     """
     #TODO(CJ): should remove existing constraint remark lines in the .pdb file
-    fs.check_file_exists( current_structure )
+    fs.check_file_exists( params.structure )
 
-    current_structure = Path(current_structure)
+    #remove_existing_constraints()
+
+    current_structure = Path(params.structure)
     cst_file, pdb_with_csts = str(
         current_structure.parent / "RDock.cst"
     ), f"{current_structure.parent}/{current_structure.stem}_csts.pdb"
@@ -1037,7 +1104,7 @@ def add_constraints(params: RoutineConfig) -> None:
 
     for cidx, cst in enumerate(params.constraints):
         
-        validate_cst( current_structure, cst )
+        validate_cst( params.structure, cst )
         
         if cst_content:
             cst_content.append("")
@@ -1071,11 +1138,11 @@ def add_constraints(params: RoutineConfig) -> None:
     content: List[str] = [
         "HEADER                                            xx-MMM-xx",
     ] + res_mappings
-    content.extend(fs.lines_from_file(current_structure))
+    content.extend(fs.lines_from_file(params.structure))
     fs.write_lines(pdb_with_csts, content)
 
-    return (pdb_with_csts, cst_file)
-
+    params.structure = pdb_with_csts
+    params.cst_file = cst_file
 
 
 def handle_temp_files( params :RoutineConfig, mapper1:Dict[str,str], mapper2:Union[Dict[str,str], None] ) -> None:
@@ -1134,33 +1201,72 @@ def mutate( params : RoutineConfig ) -> None:
 
 
 def relax( params: RoutineConfig ) -> None:
-    """ 
+    """Method that checks if the bare polypeptide chain has a RosettaEnergy <= 0.0. Disregards
+    ligands. If polypeptide chain RosettaEnergy > 0, tries a simplistic relaxation that mainly
+    targets replusion energy in Rosetta.
     
     Args:
+        params: 
         
     Returns:
+        Nothing.
 
     """
-
-    eflags: List[str] = ['-in:file:extra_res_fa', str(l1_fm['params'])]
-
-    if params.ligand_2:
-        eflags.extend(['-in:file:extra_res_fa', str(l2_fm['params'])])
-
-    start_score: float = eh.interface.rosetta.score(current_structure,
-                                                    extra_flags=eflags)
-
-    
-    # if there is a mutation you have to minimize regardless
-
+    __cmd = eh.interface.pymol.cmd
+    __cmd.delete('all')
+    __cmd.load(params.structure)
+    __cmd.remove('resn L01')
+    __cmd.remove('resn L02')
+    __cmd.save('__temp.pdb')
+    start_score: float = eh.interface.rosetta.score('__temp.pdb')
 
     if start_score >= 0.0:
-        eh.core._LOGGER.error(
-            f"The starting structure has a REU >= 0 ({start_score:.3f}). Relax/minmize the starting structure and re-run EnzyRCD on it. Exiting..."
+        eh.core._LOGGER.info(
+            f"The starting structure without ligand(s) has an REU >= 0 ({start_score:.3f}). Structure will be relaxed without ligand(s)."
         )
-        exit(1)
-    
-    #TODO(CJ): add the relaxation in here
+    elif params.mutations:
+        eh.core._LOGGER.info(
+            f"The structure was mutated. Structure will be relaxed wihtout ligand(s)."
+        )
+    elif start_score <= 0.0:
+        eh.core._LOGGER.info(f"The starting structure without ligand(s) has a stable REU of {start_score:.3f}! No relaxation necessary.")
+        fs.safe_rm( '__temp.pdb' )
+        return 
+
+
+
+    df:pd.DataFrame = eh.interface.rosetta.relax(
+        '__temp.pdb',
+        1,
+        ramp_constraints=False,
+        ignore_zero_occupancy=False,
+    )
+ 
+    if df.total_score[0] >= 0.0 :
+        eh.core._LOGGER.error(
+            f"The relaxed structure has an REU >= 0 ({df.total_score[0]:.3f}). Manual relaxation is needed. Exiting..."
+        )
+        exit( 1 )
+    else:
+        eh.core._LOGGER.info(f"New REU of {start_score:.3f} is stable!")
+
+
+    fpath = Path(params.structure)
+    relaxed = str(
+        fpath.parent / f"{fpath.stem}_relaxed.pdb"
+    )
+
+    __cmd.delete('all')
+    __cmd.load( params.structure )
+    __cmd.remove( 'chain A' )
+    __cmd.load( df.description[0] )        
+    __cmd.save( fpath )
+    __cmd.delete('all')
+
+    fs.safe_rm('__temp.pdb')
+    fs.safe_rm('__temp_0001.pdb')
+
+    params.structure = relaxed
 
 
 def dock(params:RoutineConfig) -> None:
@@ -1172,14 +1278,14 @@ def dock(params:RoutineConfig) -> None:
     Returns:
         Nothing.
     """
-    fs.safe_rm(score_file)
+    #fs.safe_rm(score_file)
     #fs.safe_rm( l1_fm[1] )
     #fs.safe_rm( ligand_2_parameters[1] )
     start_dir: str = os.getcwd()
 
 
     os.chdir(params.work_dir)
-    eh.interface.rosetta.run_rosetta_scripts([f"@options.txt"])
+    eh.interface.rosetta.run_rosetta_scripts([f"@{params.option_file}"])
     os.chdir(start_dir)
 
 
@@ -1194,8 +1300,8 @@ def report_and_cleanup(params: RoutineConfig) -> None:
     """
     #TODO(CJ): this is the part where I will check if the constraints are 
     # actually satisfied
-    score_csv: str = log_results(score_file, params.top_n)
-    handle_temp_files( params, l1_fm, l2_fm if params.ligand_2 else None ) 
+    score_csv: str = log_results(params.score_file, params.top_n)
+    handle_temp_files( params, params.l1_fm, params.l2_fm if params.ligand_2 else None ) 
     log_elapsed_time(params)
 
 
@@ -1214,10 +1320,10 @@ def main(params: RoutineConfig ) -> None:
     place_ligands(params)
     
     add_constraints(params)
-
+    
     relax(params)
     
-    make_options_file(parms)
+    make_options_file(params)
 
     dock(params)
     
