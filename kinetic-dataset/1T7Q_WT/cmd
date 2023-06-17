@@ -1,0 +1,16 @@
+#!/usr/bin/env bash 
+~/projects/EnzyRCD/EnzyRCD             ./enzyme_0001.pdb      \
+                --ligand_1 ./L01.mol2        \
+                --ligand_2 ./L02.mol2        \
+                --pH "7.80"                     \
+                --n_struct 50               \
+                --work_dir "./"             \
+                --constraints "./constraints.txt" \
+                --temp_handling "delete"
+                
+
+
+
+
+#                --constraints ./RDock.cst    \ TODO(CJ): get this created
+
