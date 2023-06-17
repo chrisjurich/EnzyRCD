@@ -1,0 +1,10 @@
+#!/usr/bin/env bash 
+~/projects/EnzyRCD/EnzyRCD             "./production.pdb"           \
+                --pH 7.50                                           \
+                --constraints "./constraints.txt"                   \
+                --ligand_2 './L02.mol2'                             \
+                --n_struct 1                                        \
+                --work_dir "./"                                     \
+                --temp_handling "delete"                            \
+                --use_cache
+

@@ -720,7 +720,7 @@ class Routine:
                 eh.core._LOGGER.info(
                     f"Chain Y is a ligand and exists but has not been separated. Exporting to '{outfile}'"
                 )
-                __cmd.save(outfile, "chain Y")
+                eh.interface.pymol.execute([("save", outfile, "chain Y")])
 
             if 'Z' in aa_names and not self.ligand_2:
                 self.l2_native = True
@@ -729,7 +729,7 @@ class Routine:
                 eh.core._LOGGER.info(
                     f"Chain Z is a ligand and exists but has not been separated. Exporting to '{outfile}'"
                 )
-                __cmd.save(outfile, "chain Z")
+                eh.interface.pymol.execute([("save", outfile, "chain Z")])
 
         q_lt_1: bool = df.q.min() < 1.00
 
