@@ -1,0 +1,1 @@
+(Y,1,L01,H10,O4,C5)(B,264,HIS,ND1,CG,CB)(distanceAB,3.0,0.3,1000.0,0)
