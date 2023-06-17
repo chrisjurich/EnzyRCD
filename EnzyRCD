@@ -278,9 +278,9 @@ class Routine:
                     ('delete', 'all'),
                     ('load', self.structure),
                     ('remove', 'resn L01'),
-                    ('load', self.l1_fm['pdb'])
+                    ('load', self.l1_fm['pdb']),
                     ('remove', 'resn L02'),
-                    ('alter', 'resn', 'L01', "chain='Y'")
+                    ('alter', 'resn L01', "chain='Y'")
                 ]
 
                 if self.ligand_2:

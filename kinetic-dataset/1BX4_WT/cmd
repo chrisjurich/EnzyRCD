@@ -1,5 +1,5 @@
 #!/usr/bin/env bash 
-~/projects/EnzyRCD/EnzyRCD             "./test.pdb"                \
+~/projects/EnzyRCD/EnzyRCD             "./production.pdb"                \
                 --ligand_1 L01.mol2                                 \
                 --ligand_2 L02.mol2                                 \
                 --pH 7.50                                           \
