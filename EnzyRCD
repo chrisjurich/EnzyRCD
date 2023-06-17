@@ -661,13 +661,22 @@ class Routine:
                     f"Appending {len(chain_df)} residues to end of chain A. Starting at index {start}."
                 )
                 for i, row in chain_df.iterrows():
-                    __cmd.alter(f"chain {row.chain} and resi {row.resi}",
-                                f'resi="{start}"')
+                    eh.interface.pymol.execute([(
+                        "alter",f"(chain {row.chain} and resi {row.resi})",f'resi="{start}";chain="A"'
+                        )])
                     start += 1
-                __cmd.alter(f"chain {chain_name}", 'chain="A"')
-
+                #eh.interface.pymol.execute([("alter",f"chain {chain_name}", 'chain="A"')])
+        
         for tr in to_remove:
             del aa_only[tr]
+
+        temp_df: pd.DataFrame = eh.interface.pymol.collect(
+            'memory', "chain resn resi".split())
+        temp_df['resi'] = df.resi.astype(int)
+        temp_df.drop_duplicates(inplace=True)
+        
+        #print(temp_df)
+        #exit( 1 )
 
         if not aa_only:
 
@@ -728,32 +737,88 @@ class Routine:
             eh.core._LOGGER.info(
                 f"Some occupancies are less than 1.0. Now setting all atoms to 1.0"
             )
-            __cmd.alter('all', 'q=1.00')
+            eh.interface.pymol.execute([('alter', 'all', 'q=1.00')])
 
         #TODO(CJ): apply changes to rosetta constraints
         inpath = Path(self.structure)
         outfile = Path(self.work_dir) / f"{inpath.stem}_canonical.pdb"
 
-        eh.interface.pymol.execute([("save", outfile)])
+        eh.interface.pymol.execute([
+            ("save", outfile),
+            ("delete", "all"),
+            ("load", outfile)
+        ])
 
-        canonical: pd.DataFrame = eh.interface.pymol.collect(
-            self.structure, "chain resn resi".split())
-        canonical['resi'] = df.resi.astype(int)
+        cmd.delete('all')
+        cmd.load(outfile)
+        stored.holder = []
+        cmd.iterate('all', 'stored.holder.append((chain, resn, resi))')
+        canonical = pd.DataFrame(data=stored.holder, columns="chain resn resi".split())
+        canonical['resi'] = canonical.resi.astype(int)
 
+        #canonical: pd.DataFrame = eh.interface.pymol.collect(
+        #    outfile, "chain resn resi".split())
+        #canonical['resi'] = df.resi.astype(int)
+        
         for i, row in canonical.drop_duplicates().iterrows():
 
             if row.resn in "HID HIE HIP".split():
                 eh.core._LOGGER.info(
                     f"Found AMBER-typed histidine {row.chain}.{row.resn}.{row.resi}. Changing to residue name to HIS"
                 )
-                __cmd.alter(f"chain {row.chain} and resi {row.resi}",
-                            "resn='HIS'")
+                
+                eh.interface.pymol.execute([('alter', f"chain {row.chain} and resi {row.resi}","resn='HIS'")])
+
 
         if len(df) != len(canonical):
             eh.core._LOGGER.error(
                 f"Error during canonicalization, differing number of atoms. Compare structures in {self.structure} and {outfile}. Exiting..."
             )
             exit(1)
+
+        mapper = dict()
+        for (i1, row1),(i2, row2) in zip(df.iterrows(), canonical.iterrows()):
+            
+            key1 = (row1.chain, row1.resn, row1.resi)
+            key2 = (row2.chain, row2.resn, row2.resi)
+            
+            if key1 == key2:
+                continue
+            
+            mapper[key1] = key2
+
+        if mapper:
+            eh.core._LOGGER.info(f"A total of {len(mapper)} residues had their names or indices changed. Propagating to constraints...")
+
+
+        for cidx, cst in enumerate(self.constraints):
+            
+            key1 = (cst.rchain_1, cst.rname_1, cst.rnum_1)
+            key2 = (cst.rchain_2, cst.rname_2, cst.rnum_2)
+            
+            change:bool = False
+            
+            if key1 in mapper:
+                change = True
+                key1 = mapper[key1]
+
+            if key2 in mapper:
+                change = True
+                key2 = mapper[key2]
+
+            if change:
+                eh.core._LOGGER.info(f"Canonicalization has immpacted constratint {cidx+1}")
+                self.constraints[cidx]=RosettaCst(
+                    rname_1=key1[1],
+                    rnum_1=key1[2],
+                    rchain_1=key1[0],
+                    rname_2=key2[1], 
+                    rnum_2=key2[2], 
+                    rchain_2=key2[0],
+                    ratoms_1=cst.ratoms_1,
+                    ratoms_2=cst.ratoms_2,
+                    constraints=cst.constraints
+                ) 
 
         self.structure = str(outfile)
 
