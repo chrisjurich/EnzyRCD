@@ -670,8 +670,18 @@ class Routine:
         if df.resi[0] != 1:
             eh.core._LOGGER.warning(
                 "First residue is not indexed to 1! Renumbering system.")
-            exit(1)
-            #TODO(CJ): this is where the renumbering will happen
+            c_df: pd.DataFrame = eh.interface.pymol.collect(
+                "memory", "chain resn resi".split())
+            c_df['resi'] = c_df.resi.astype(int)
+            c_df.drop_duplicates(inplace=True)
+            chains = c_df.chain.unique()
+            for cc in chains:
+                for new, old in enumerate(sorted( c_df[c_df.chain==cc].resi.unique() )):
+                    if new + 1 == old:
+                        continue
+                    eh.interface.pymol.execute(
+                        [('alter', f'chain {cc} and resi {old}', f'resi="{new+1}"')]
+                    )
 
         aa_only: Dict[str, bool] = dict(
             zip(list(df.chain.unique()), [True] * len(df.chain.unique())))
