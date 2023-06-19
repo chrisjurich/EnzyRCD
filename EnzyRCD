@@ -650,7 +650,7 @@ class Routine:
 
     def canonicalize(self) -> None:
         """Method that "canonicalizes" the supplied enzyme system by ensuring that it has the form:
-            + chain A, required, polypeptide and MG/ZN only, breaks allowed
+            + chain A, required, polypeptide and MG, MN and ZN only, breaks allowed
             + chain Y, required, one ligand named L01
             + chain Z, optional, one ligand named L02
 
@@ -685,7 +685,7 @@ class Routine:
             visited.add(key)
 
             if row.resn not in eh.chemical.residue.THREE_LETTER_AA_MAPPER and row.resn.upper(
-            ) not in "MG ZN".split():
+            ) not in "MG ZN MN".split():
                 aa_only[row.chain] = False
                 eh.core._LOGGER.info(
                     f"Found non-amino acid residue {row.chain}.{row.resi}.{row.resn}"
