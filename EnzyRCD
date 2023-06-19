@@ -1548,7 +1548,7 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
             continue
 
         for n, nrow in df2.iterrows():
-            if same(orow.point, nrow.point, 0.5):
+            if same(orow.point, nrow.point, 0.7):
                 eh.core._LOGGER.info(f"Remapped atom '{res_name}.{orow['name']}' -> '{res_name}.{nrow['name']}'")
                 mapper[orow["name"]] = nrow["name"]
                 break
