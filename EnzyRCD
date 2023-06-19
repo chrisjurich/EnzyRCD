@@ -1541,10 +1541,11 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
                 mapper[orow["name"]] = nrow["name"]
                 break
         else:
+            eh.core._LOGGER.warning(f"Unable to remap '{res_name}.{orow['name']}'. Continuing...")
             mapper[orow["name"]] = None
 
     for o, orow in df1.iterrows():
-        if orow.get("name", None):
+        if mapper.get(orow["name"], None):
             continue
 
         for n, nrow in df2.iterrows():
@@ -1555,6 +1556,7 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
         else:
             eh.core._LOGGER.warning(f"Unable to remap '{res_name}.{orow['name']}'. Continuing...")
             mapper[orow["name"]] = None
+            print(orow["name"])
 
     return mapper
 

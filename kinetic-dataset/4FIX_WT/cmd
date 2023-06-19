@@ -6,5 +6,6 @@
                 --constraints "./constraints.txt"                   \
                 --n_struct 100                                      \
                 --work_dir "./"                                     \
-                --temp_handling "delete"
+                --temp_handling "delete"                            \
+                --use_cache
 
