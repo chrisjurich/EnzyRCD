@@ -1,0 +1,1 @@
+(Y,1,ADP,PB,O3A,PA)(Z,1,GLC,O6,C6,C5)(distanceAB,2.00,0.20,1000.00,0)
