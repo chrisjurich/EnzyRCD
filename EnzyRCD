@@ -1544,7 +1544,7 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
             mapper[orow["name"]] = None
 
     for o, orow in df1.iterrows():
-        if not orow.get("name", None):
+        if orow.get("name", None):
             continue
 
         for n, nrow in df2.iterrows():
