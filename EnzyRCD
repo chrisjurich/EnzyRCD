@@ -278,9 +278,9 @@ class Routine:
                     ('delete', 'all'),
                     ('load', self.structure),
                     ('remove', 'resn L01'),
-                    ('load', self.l1_fm['pdb'])
+                    ('load', self.l1_fm['pdb']),
                     ('remove', 'resn L02'),
-                    ('alter', 'resn', 'L01', "chain='Y'")
+                    ('alter', 'resn L01', "chain='Y'")
                 ]
 
                 if self.ligand_2:
@@ -486,7 +486,7 @@ class Routine:
             A Dict[str,str] mapping different versions of the ligand to their respective local paths.
 
         """
-        def _impl(molfile: str, res_code: str) -> Dict[str, str]:
+        def _preparation_implementation(molfile: str, res_code: str) -> Dict[str, str]:
             """ """
             file_mapper: Dict[str, str] = {'input': str(molfile)}
             file_mapper['deprotonated'] = eh.interface.pymol.de_protonate(
@@ -537,10 +537,68 @@ class Routine:
             #TODO(CJ): need to move the conformers here and set them up correctly
             return deepcopy(file_mapper)
 
-        self.l1_fm = _impl(self.ligand_1, "L01")
+        self.l1_fm = _preparation_implementation(self.ligand_1, "L01")
+        l1_atom_mapper:Dict[str,str] = map_atoms("Y.1.L01", self.ligand_1, self.l1_fm['pdb'])
 
+        for cidx,cst in enumerate(self.constraints):
+            if cst.rchain_1 == 'Y':
+                self.constraints[cidx] = RosettaCst(
+                    rname_1='L01',
+                    rnum_1=cst.rnum_1,
+                    rchain_1=cst.rchain_1,
+                    ratoms_1=list(map(lambda kk: l1_atom_mapper[kk], cst.ratoms_1)),
+                    rname_2=cst.rname_2,
+                    rnum_2=cst.rnum_2,
+                    rchain_2=cst.rchain_2,
+                    ratoms_2=cst.ratoms_2,
+                    constraints=cst.constraints
+                )
+            
+            if cst.rchain_2 == 'Y':
+                self.constraints[cidx] = RosettaCst(
+                    rname_1=cst.rname_1,
+                    rnum_1=cst.rnum_1,
+                    rchain_1=cst.rchain_1,
+                    ratoms_2=list(map(lambda kk: l1_atom_mapper[kk], cst.ratoms_2)),
+                    rname_2='L01',
+                    rnum_2=cst.rnum_2,
+                    rchain_2=cst.rchain_2,
+                    ratoms_1=cst.ratoms_1,
+                    constraints=cst.constraints
+                )
+
+        #TODO(CJ): need to worry about the case where atoms are deleted
         if self.ligand_2:
-            self.l2_fm = _impl(self.ligand_2, "L02")
+            self.l2_fm = _preparation_implementation(self.ligand_2, "L02")
+            l2_atom_mapper:Dict[str,str] = map_atoms("Z.1.L02", self.ligand_2, self.l2_fm['pdb'])
+
+            for cidx, cst in enumerate(self.constraints):
+                if cst.rchain_1 == 'Z':
+                    self.constraints[cidx] = RosettaCst(
+                        rname_1='L02',
+                        rnum_1=cst.rnum_1,
+                        rchain_1=cst.rchain_1,
+                        ratoms_1=list(map(lambda kk: l2_atom_mapper[kk], cst.ratoms_1)),
+                        rname_2=cst.rname_2,
+                        rnum_2=cst.rnum_2,
+                        rchain_2=cst.rchain_2,
+                        ratoms_2=cst.ratoms_2,
+                        constraints=cst.constraints
+                    )
+                
+                if cst.rchain_2 == 'Z':
+                    self.constraints[cidx] = RosettaCst(
+                        rname_1=cst.rname_1,
+                        rnum_1=cst.rnum_1,
+                        rchain_1=cst.rchain_1,
+                        ratoms_2=list(map(lambda kk: l2_atom_mapper[kk], cst.ratoms_2)),
+                        rname_2='L02',
+                        rnum_2=cst.rnum_2,
+                        rchain_2=cst.rchain_2,
+                        ratoms_1=cst.ratoms_1,
+                        constraints=cst.constraints
+                    )
+
 
     def init(self) -> None:
         """Initialization function. Sets up the environment for routine execution by making all associated applications quiet and making
@@ -592,7 +650,7 @@ class Routine:
 
     def canonicalize(self) -> None:
         """Method that "canonicalizes" the supplied enzyme system by ensuring that it has the form:
-            + chain A, required, polypeptide and MG/ZN only, breaks allowed
+            + chain A, required, polypeptide and MG, MN and ZN only, breaks allowed
             + chain Y, required, one ligand named L01
             + chain Z, optional, one ligand named L02
 
@@ -612,8 +670,18 @@ class Routine:
         if df.resi[0] != 1:
             eh.core._LOGGER.warning(
                 "First residue is not indexed to 1! Renumbering system.")
-            exit(1)
-            #TODO(CJ): this is where the renumbering will happen
+            c_df: pd.DataFrame = eh.interface.pymol.collect(
+                "memory", "chain resn resi".split())
+            c_df['resi'] = c_df.resi.astype(int)
+            c_df.drop_duplicates(inplace=True)
+            chains = c_df.chain.unique()
+            for cc in chains:
+                for new, old in enumerate(sorted( c_df[c_df.chain==cc].resi.unique() )):
+                    if new + 1 == old:
+                        continue
+                    eh.interface.pymol.execute(
+                        [('alter', f'chain {cc} and resi {old}', f'resi="{new+1}"')]
+                    )
 
         aa_only: Dict[str, bool] = dict(
             zip(list(df.chain.unique()), [True] * len(df.chain.unique())))
@@ -627,7 +695,7 @@ class Routine:
             visited.add(key)
 
             if row.resn not in eh.chemical.residue.THREE_LETTER_AA_MAPPER and row.resn.upper(
-            ) not in "MG ZN".split():
+            ) not in "MG ZN MN".split():
                 aa_only[row.chain] = False
                 eh.core._LOGGER.info(
                     f"Found non-amino acid residue {row.chain}.{row.resi}.{row.resn}"
@@ -661,13 +729,22 @@ class Routine:
                     f"Appending {len(chain_df)} residues to end of chain A. Starting at index {start}."
                 )
                 for i, row in chain_df.iterrows():
-                    __cmd.alter(f"chain {row.chain} and resi {row.resi}",
-                                f'resi="{start}"')
+                    eh.interface.pymol.execute([(
+                        "alter",f"(chain {row.chain} and resi {row.resi})",f'resi="{start}";chain="A"'
+                        )])
                     start += 1
-                __cmd.alter(f"chain {chain_name}", 'chain="A"')
-
+                #eh.interface.pymol.execute([("alter",f"chain {chain_name}", 'chain="A"')])
+        
         for tr in to_remove:
             del aa_only[tr]
+
+        temp_df: pd.DataFrame = eh.interface.pymol.collect(
+            'memory', "chain resn resi".split())
+        temp_df['resi'] = df.resi.astype(int)
+        temp_df.drop_duplicates(inplace=True)
+        
+        #print(temp_df)
+        #exit( 1 )
 
         if not aa_only:
 
@@ -711,7 +788,7 @@ class Routine:
                 eh.core._LOGGER.info(
                     f"Chain Y is a ligand and exists but has not been separated. Exporting to '{outfile}'"
                 )
-                __cmd.save(outfile, "chain Y")
+                eh.interface.pymol.execute([("save", outfile, "chain Y")])
 
             if 'Z' in aa_names and not self.ligand_2:
                 self.l2_native = True
@@ -720,7 +797,7 @@ class Routine:
                 eh.core._LOGGER.info(
                     f"Chain Z is a ligand and exists but has not been separated. Exporting to '{outfile}'"
                 )
-                __cmd.save(outfile, "chain Z")
+                eh.interface.pymol.execute([("save", outfile, "chain Z")])
 
         q_lt_1: bool = df.q.min() < 1.00
 
@@ -728,32 +805,112 @@ class Routine:
             eh.core._LOGGER.info(
                 f"Some occupancies are less than 1.0. Now setting all atoms to 1.0"
             )
-            __cmd.alter('all', 'q=1.00')
+            eh.interface.pymol.execute([('alter', 'all', 'q=1.00')])
 
         #TODO(CJ): apply changes to rosetta constraints
         inpath = Path(self.structure)
         outfile = Path(self.work_dir) / f"{inpath.stem}_canonical.pdb"
 
-        eh.interface.pymol.execute([("save", outfile)])
+        eh.interface.pymol.execute([
+            ("save", outfile),
+            ("delete", "all"),
+            ("load", outfile)
+        ])
 
-        canonical: pd.DataFrame = eh.interface.pymol.collect(
-            self.structure, "chain resn resi".split())
-        canonical['resi'] = df.resi.astype(int)
+        cmd.delete('all')
+        cmd.load(outfile)
+        stored.holder = []
+        cmd.iterate('all', 'stored.holder.append((chain, resn, resi))')
+        canonical = pd.DataFrame(data=stored.holder, columns="chain resn resi".split())
+        canonical['resi'] = canonical.resi.astype(int)
+        # making sure the residues are named correctly
+        just_residues = canonical.drop_duplicates()
+        just_residues = just_residues[just_residues.chain!='A']
 
+        for i,row in just_residues.iterrows():
+            if row.chain == 'Y' and row.resn != 'L01':
+                eh.core._LOGGER.info(f"Renaming residue Y.{row.resn}.{row.resi} to Y.L01.{row.resi}")
+                eh.interface.pymol.execute([
+                    ("delete", "all"),
+                    ("load", outfile),
+                    ("alter", "chain Y", "resn='L01'"),
+                    ("save", outfile),
+                    ("delete", "all"),
+                ])
+            
+            if row.chain == 'Z' and row.resn != 'L02':
+                eh.core._LOGGER.info(f"Renaming residue Z.{row.resn}.{row.resi} to Z.L01.{row.resi}")
+                eh.interface.pymol.execute([
+                    ("delete", "all"),
+                    ("load", outfile),
+                    ("alter", "chain Z", "resn='L02'"),
+                    ("save", outfile),
+                    ("delete", "all"),
+                ])
+        
+        #canonical: pd.DataFrame = eh.interface.pymol.collect(
+        #    outfile, "chain resn resi".split())
+        #canonical['resi'] = df.resi.astype(int)
+        
         for i, row in canonical.drop_duplicates().iterrows():
 
             if row.resn in "HID HIE HIP".split():
                 eh.core._LOGGER.info(
                     f"Found AMBER-typed histidine {row.chain}.{row.resn}.{row.resi}. Changing to residue name to HIS"
                 )
-                __cmd.alter(f"chain {row.chain} and resi {row.resi}",
-                            "resn='HIS'")
+                
+                eh.interface.pymol.execute([('alter', f"chain {row.chain} and resi {row.resi}","resn='HIS'")])
+
 
         if len(df) != len(canonical):
             eh.core._LOGGER.error(
                 f"Error during canonicalization, differing number of atoms. Compare structures in {self.structure} and {outfile}. Exiting..."
             )
             exit(1)
+
+        mapper = dict()
+        for (i1, row1),(i2, row2) in zip(df.iterrows(), canonical.iterrows()):
+            
+            key1 = (row1.chain, row1.resn, row1.resi)
+            key2 = (row2.chain, row2.resn, row2.resi)
+            
+            if key1 == key2:
+                continue
+            
+            mapper[key1] = key2
+
+        if mapper:
+            eh.core._LOGGER.info(f"A total of {len(mapper)} residues had their names or indices changed. Propagating to constraints...")
+
+
+        for cidx, cst in enumerate(self.constraints):
+            
+            key1 = (cst.rchain_1, cst.rname_1, cst.rnum_1)
+            key2 = (cst.rchain_2, cst.rname_2, cst.rnum_2)
+            
+            change:bool = False
+            
+            if key1 in mapper:
+                change = True
+                key1 = mapper[key1]
+
+            if key2 in mapper:
+                change = True
+                key2 = mapper[key2]
+
+            if change:
+                eh.core._LOGGER.info(f"Canonicalization has immpacted constratint {cidx+1}")
+                self.constraints[cidx]=RosettaCst(
+                    rname_1=key1[1],
+                    rnum_1=key1[2],
+                    rchain_1=key1[0],
+                    rname_2=key2[1], 
+                    rnum_2=key2[2], 
+                    rchain_2=key2[0],
+                    ratoms_1=cst.ratoms_1,
+                    ratoms_2=cst.ratoms_2,
+                    constraints=cst.constraints
+                ) 
 
         self.structure = str(outfile)
 
@@ -1376,6 +1533,42 @@ def parse_args() -> Routine:
                    temp_handling=args.temp_handling,
                    use_cache=args.use_cache)
 
+def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
+    """TODO(CJ)"""
+    def same(p1, p2, tol=0.01) -> bool:
+        return np.sqrt(np.sum((p1-p2)**2)) <= tol
+    df1:pd.DataFrame = eh.interface.pymol.collect(fname1, "name x y z".split())
+    df2:pd.DataFrame = eh.interface.pymol.collect(fname2, "name x y z".split())
+    df1['point'] = df1.apply(lambda row: np.array(np.array([row.x, row.y, row.z])), axis=1)
+    df1.drop("x y z".split(), 1)
+    df2['point'] = df2.apply(lambda row: np.array(np.array([row.x, row.y, row.z])), axis=1)
+    df2.drop("x y z".split(), 1)
+    mapper = dict()
+    for o, orow in df1.iterrows():
+        for n, nrow in df2.iterrows():
+            if same(orow.point, nrow.point):
+                eh.core._LOGGER.info(f"Remapped atom '{res_name}.{orow['name']}' -> '{res_name}.{nrow['name']}'")
+                mapper[orow["name"]] = nrow["name"]
+                break
+        else:
+            eh.core._LOGGER.warning(f"Unable to remap '{res_name}.{orow['name']}'. Continuing...")
+            mapper[orow["name"]] = None
+
+    for o, orow in df1.iterrows():
+        if mapper.get(orow["name"], None):
+            continue
+
+        for n, nrow in df2.iterrows():
+            if same(orow.point, nrow.point, 0.7):
+                eh.core._LOGGER.info(f"Remapped atom '{res_name}.{orow['name']}' -> '{res_name}.{nrow['name']}'")
+                mapper[orow["name"]] = nrow["name"]
+                break
+        else:
+            eh.core._LOGGER.warning(f"Unable to remap '{res_name}.{orow['name']}'. Continuing...")
+            mapper[orow["name"]] = None
+            print(orow["name"])
+
+    return mapper
 
 if __name__ == '__main__':
     routine = parse_args()
