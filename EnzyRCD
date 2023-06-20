@@ -17,26 +17,46 @@ from rdkit.Chem import Descriptors
 
 from pathlib import Path
 from pymol import cmd, stored
-from typing import List, Tuple, Dict, Union
 from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
+from typing import List, Tuple, Dict, Union, Any
 
 
 class RosettaCst:
-    """ """
+    """TODO"""
     def __init__(self, **kwargs):
+        """"""
+        self.rname_1 = None 
+        self.rnum_1 = None
+        self.ratoms_1 = None
+        self.rchain_1 = None 
+        self.rname_2 = None
+        self.rnum_2 = None
+        self.ratoms_2 = None
+        self.rchain_2 = None
+        self.constraints = None
+
+        ALLOWED:List[str]='rname_1 rnum_1 ratoms_1 rchain_1 rname_2 rnum_2 ratoms_2 rchain_2 constraints'.split()
+        
+        for k,v in kwargs.items():
+            if k not in ALLOWED:
+                eh.core._LOGGER.error(f"The supplied keyword '{k}' is not valid for the RosettaCst() ctor. Exiting...")
+                exit( 1 )
+            setattr(self, k, v)
+
+            ALLOWED.remove( k )
+
+        if ALLOWED:
+            eh.core._LOGGER.error(f"Missing the following keyword arguments for RosettaCst() ctor: {', '.join(ALLOWED)}. Exiting...")
+            exit( 1 )
+
+
+    def set(self, key:str, value: Any) -> None:
         """ """
-        pass
+        if key not in self.__dict__:
+            assert False
 
-
-RosettaCst = namedtuple(
-    'RosettaCst',
-    'rname_1 rnum_1 ratoms_1 rchain_1 rname_2 rnum_2 ratoms_2 rchain_2 constraints'
-)
-#TODO(CJ): move this to the rosetta interface file
-
-RosettaCst.__doc__ = """TODO"""
-
+        self.__dict__[key] = value
 
 
 class Routine:
@@ -405,34 +425,15 @@ class Routine:
             Nothing.
     
         """
-        __cmd = eh.interface.pymol.cmd
-        __cmd.delete('all')
-        __cmd.load(self.structure)
-        __cmd.remove('resn L01')
-        __cmd.remove('resn L02')
-        __cmd.save('__temp.pdb')
-        start_score: float = eh.interface.rosetta.score('__temp.pdb')
+        eflags=['-extra_res_fa', str(self.l1_fm['self'])]
+        if self.ligand_2:
+            eflags.append(str(self.l2_fm['self']))
 
-        if start_score >= 0.0:
-            eh.core._LOGGER.info(
-                f"The starting structure without ligand(s) has an REU >= 0 ({start_score:.3f}). Structure will be relaxed without ligand(s)."
-            )
-        elif self.mutations:
-            eh.core._LOGGER.info(
-                f"The structure was mutated. Structure will be relaxed wihtout ligand(s)."
-            )
-        elif start_score <= 0.0:
-            eh.core._LOGGER.info(
-                f"The starting structure without ligand(s) has a stable REU of {start_score:.3f}! No relaxation necessary."
-            )
-            fs.safe_rm('__temp.pdb')
-            return
 
-        df: pd.DataFrame = eh.interface.rosetta.relax(
-            '__temp.pdb',
-            1,
-            ramp_constraints=False,
-            ignore_zero_occupancy=False,
+        df: pd.DataFrame = eh.interface.rosetta.loop_relax(
+            self.structure,
+            10,
+            extra_flags=eflags
         )
 
         if df.total_score[0] >= 0.0:
@@ -440,21 +441,12 @@ class Routine:
                 f"The relaxed structure has an REU >= 0 ({df.total_score[0]:.3f}). Manual relaxation is needed. Exiting..."
             )
             exit(1)
-        else:
-            eh.core._LOGGER.info(f"New REU of {start_score:.3f} is stable!")
 
+        #TODO(CJ): log something here 
         fpath = Path(self.structure)
         relaxed = str(fpath.parent / f"{fpath.stem}_relaxed.pdb")
 
-        __cmd.delete('all')
-        __cmd.load(self.structure)
-        __cmd.remove('chain A')
-        __cmd.load(df.description[0])
-        __cmd.save(fpath)
-        __cmd.delete('all')
-
-        fs.safe_rm('__temp.pdb')
-        fs.safe_rm('__temp_0001.pdb')
+        shutil.move(df.description[0], relaxed)
 
         self.structure = relaxed
 
@@ -551,29 +543,13 @@ class Routine:
 
         for cidx,cst in enumerate(self.constraints):
             if cst.rchain_1 == 'Y':
-                self.constraints[cidx] = RosettaCst(
-                    rname_1='L01',
-                    rnum_1=cst.rnum_1,
-                    rchain_1=cst.rchain_1,
-                    ratoms_1=list(map(lambda kk: l1_atom_mapper[kk], cst.ratoms_1)),
-                    rname_2=cst.rname_2,
-                    rnum_2=cst.rnum_2,
-                    rchain_2=cst.rchain_2,
-                    ratoms_2=cst.ratoms_2,
-                    constraints=cst.constraints
+                self.constraints[cidx].set(
+                    'ratoms_1',list(map(lambda kk: l1_atom_mapper[kk], cst.ratoms_1))
                 )
             
             if cst.rchain_2 == 'Y':
-                self.constraints[cidx] = RosettaCst(
-                    rname_1=cst.rname_1,
-                    rnum_1=cst.rnum_1,
-                    rchain_1=cst.rchain_1,
-                    ratoms_2=list(map(lambda kk: l1_atom_mapper[kk], cst.ratoms_2)),
-                    rname_2='L01',
-                    rnum_2=cst.rnum_2,
-                    rchain_2=cst.rchain_2,
-                    ratoms_1=cst.ratoms_1,
-                    constraints=cst.constraints
+                self.constraints[cidx].set(
+                    'ratoms_2', list(map(lambda kk: l1_atom_mapper[kk], cst.ratoms_2))
                 )
 
         #TODO(CJ): need to worry about the case where atoms are deleted
@@ -583,29 +559,13 @@ class Routine:
 
             for cidx, cst in enumerate(self.constraints):
                 if cst.rchain_1 == 'Z':
-                    self.constraints[cidx] = RosettaCst(
-                        rname_1='L02',
-                        rnum_1=cst.rnum_1,
-                        rchain_1=cst.rchain_1,
-                        ratoms_1=list(map(lambda kk: l2_atom_mapper.get(kk,kk), cst.ratoms_1)),
-                        rname_2=cst.rname_2,
-                        rnum_2=cst.rnum_2,
-                        rchain_2=cst.rchain_2,
-                        ratoms_2=cst.ratoms_2,
-                        constraints=cst.constraints
+                    self.constraints[cidx].set(
+                        'ratoms_1',list(map(lambda kk: l2_atom_mapper.get(kk,kk), cst.ratoms_1))
                     )
                 
                 if cst.rchain_2 == 'Z':
-                    self.constraints[cidx] = RosettaCst(
-                        rname_1=cst.rname_1,
-                        rnum_1=cst.rnum_1,
-                        rchain_1=cst.rchain_1,
-                        ratoms_2=list(map(lambda kk: l2_atom_mapper[kk], cst.ratoms_2)),
-                        rname_2='L02',
-                        rnum_2=cst.rnum_2,
-                        rchain_2=cst.rchain_2,
-                        ratoms_1=cst.ratoms_1,
-                        constraints=cst.constraints
+                    self.constraints[cidx].set(
+                        'ratoms_2',  list(map(lambda kk: l2_atom_mapper[kk], cst.ratoms_2))
                     )
 
 
@@ -909,17 +869,12 @@ class Routine:
 
             if change:
                 eh.core._LOGGER.info(f"Canonicalization has immpacted constratint {cidx+1}")
-                self.constraints[cidx]=RosettaCst(
-                    rname_1=key1[1],
-                    rnum_1=key1[2],
-                    rchain_1=key1[0],
-                    rname_2=key2[1], 
-                    rnum_2=key2[2], 
-                    rchain_2=key2[0],
-                    ratoms_1=cst.ratoms_1,
-                    ratoms_2=cst.ratoms_2,
-                    constraints=cst.constraints
-                ) 
+                self.constraints[cidx].set('rname_1',   key1[1])
+                self.constraints[cidx].set('rnum_1',    key1[2])
+                self.constraints[cidx].set('rchain_1',  key1[0])
+                self.constraints[cidx].set('rname_2',   key2[1]) 
+                self.constraints[cidx].set('rnum_2',    key2[2]) 
+                self.constraints[cidx].set('rchain_2',  key2[0])
 
         self.structure = str(outfile)
 
@@ -1575,7 +1530,6 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
         else:
             eh.core._LOGGER.warning(f"Unable to remap '{res_name}.{orow['name']}'. Continuing...")
             mapper[orow["name"]] = None
-            print(orow["name"])
 
     return mapper
 
