@@ -1,0 +1,81 @@
+<!-- <root
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:noNamespaceSchemaLocation="file:///C://Users//shaoqz//OneDrive//calc_kit//RosettaRelate//rosettascripts.xsd"
+/> -->
+<ROSETTASCRIPTS>
+    <SCOREFXNS>
+        <ScoreFunction name="ligand_soft_rep" weights="beta_nov15_soft">
+            <Reweight scoretype="coordinate_constraint" weight="1.0"/>
+            <Reweight scoretype="atom_pair_constraint" weight="1.0"/>
+            <Reweight scoretype="angle_constraint" weight="1.0"/>
+            <Reweight scoretype="dihedral_constraint" weight="1.0"/>
+            <Reweight scoretype="chainbreak" weight="1.0"/>
+        </ScoreFunction>
+        <ScoreFunction name="hard_rep" weights="beta_nov15_cst"/>
+    </SCOREFXNS>
+    <LIGAND_AREAS>
+        <LigandArea name="docking_sidechain_y" chain="Y" cutoff="6.0" add_nbr_radius="true" all_atom_mode="true"/>
+        <LigandArea name="final_sidechain_y"  chain="Y" cutoff="6.0" add_nbr_radius="true" all_atom_mode="true"/>
+        <LigandArea name="final_backbone_y" chain="Y" cutoff="7.0" add_nbr_radius="false" all_atom_mode="true" Calpha_restraints="0.3"/>
+        <LigandArea name="docking_sidechain_z" chain="Z" cutoff="6.0" add_nbr_radius="true" all_atom_mode="true"/>
+        <LigandArea name="final_sidechain_z"  chain="Z" cutoff="6.0" add_nbr_radius="true" all_atom_mode="true"/>
+        <LigandArea name="final_backbone_z" chain="Z" cutoff="7.0" add_nbr_radius="false" all_atom_mode="true" Calpha_restraints="0.3"/>
+    </LIGAND_AREAS>
+    <INTERFACE_BUILDERS>
+        <InterfaceBuilder name="side_chain_for_docking_z" ligand_areas="docking_sidechain_z"/>
+        <InterfaceBuilder name="side_chain_for_final_z" ligand_areas="final_sidechain_z"/>
+        <InterfaceBuilder name="backbone_z" ligand_areas="final_backbone_z" extension_window="3"/>
+        <InterfaceBuilder name="side_chain_for_docking_y" ligand_areas="docking_sidechain_y"/>
+        <InterfaceBuilder name="side_chain_for_final_y" ligand_areas="final_sidechain_y"/>
+        <InterfaceBuilder name="backbone_y" ligand_areas="final_backbone_y" extension_window="3"/>
+    </INTERFACE_BUILDERS>
+    
+    <MOVEMAP_BUILDERS>
+        <MoveMapBuilder name="docking_y" sc_interface="side_chain_for_docking_y" minimize_water="true"/>
+        <MoveMapBuilder name="final_y" sc_interface="side_chain_for_final_y" bb_interface="backbone_y" minimize_water="true"/>
+        <MoveMapBuilder name="docking_z" sc_interface="side_chain_for_docking_z" minimize_water="true"/>
+        <MoveMapBuilder name="final_z" sc_interface="side_chain_for_final_z" bb_interface="backbone_z" minimize_water="true"/>
+    </MOVEMAP_BUILDERS>
+    <SCORINGGRIDS ligand_chain="Y" width="30">
+        <ClassicGrid grid_name="classic" weight="1.0"/>
+    </SCORINGGRIDS>
+
+    <MOVERS>
+	    <AddOrRemoveMatchCsts name="cstadd" cst_instruction="add_new"/>
+        <Transform name="transform_y" chain="Y" box_size="10" move_distance="0.2" angle="20" cycles="1000" repeats="1" temperature="5"/>
+        <Transform name="transform_z" chain="Z" box_size="10" move_distance="0.2" angle="20" cycles="1000" repeats="1" temperature="5"/>
+        
+        <HighResDocker name="high_res_docker_z" cycles="6" repack_every_Nth="3" scorefxn="ligand_soft_rep" movemap_builder="docking_z"/>
+        <HighResDocker name="high_res_docker_y" cycles="6" repack_every_Nth="3" scorefxn="ligand_soft_rep" movemap_builder="docking_y"/>
+        <FinalMinimizer name="final_z" scorefxn="hard_rep" movemap_builder="final_z"/>
+        <FinalMinimizer name="final_y" scorefxn="hard_rep" movemap_builder="final_y"/>
+        <InterfaceScoreCalculator name="add_scores" chains="Y,Z" scorefxn="hard_rep"/>
+
+        <ParsedProtocol name="low_res_dock_y">
+            <Add mover_name="cstadd"/>	
+            <Add mover_name="transform_y"/>
+        </ParsedProtocol>
+        
+        <ParsedProtocol name="low_res_dock_z">
+            <Add mover_name="cstadd"/>	
+            <Add mover_name="transform_z"/>
+        </ParsedProtocol>
+
+        <ParsedProtocol name="high_res_dock">
+            <Add mover_name="high_res_docker_z"/>
+            <Add mover_name="high_res_docker_y"/>
+            <Add mover_name="final_z"/>
+            <Add mover_name="final_y"/>
+        </ParsedProtocol>
+        <ParsedProtocol name="reporting">
+            <Add mover_name="add_scores"/>
+        </ParsedProtocol>
+    </MOVERS>
+    
+    <PROTOCOLS>
+        <Add mover_name="low_res_dock_y"/>
+        <Add mover_name="low_res_dock_z"/>
+        <Add mover_name="high_res_dock"/>
+        <Add mover_name="reporting"/>
+    </PROTOCOLS>
+</ROSETTASCRIPTS>
