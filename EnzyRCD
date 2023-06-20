@@ -13,12 +13,21 @@ import enzy_htp as eh
 from rdkit import Chem
 from copy import deepcopy
 from rdkit import RDLogger
+from rdkit.Chem import Descriptors
 
 from pathlib import Path
 from pymol import cmd, stored
 from typing import List, Tuple, Dict, Union
 from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
+
+
+class RosettaCst:
+    """ """
+    def __init__(self, **kwargs):
+        """ """
+        pass
+
 
 RosettaCst = namedtuple(
     'RosettaCst',
@@ -27,6 +36,7 @@ RosettaCst = namedtuple(
 #TODO(CJ): move this to the rosetta interface file
 
 RosettaCst.__doc__ = """TODO"""
+
 
 
 class Routine:
@@ -44,7 +54,7 @@ class Routine:
         self.mutations = str()
         self.pH = float()
         self.conformer_engine = str()
-        self.n_conformers = int()
+        #self.n_conformers = int()
         self.ligand_1 = str()
         self.l1_native = False
         self.ligand_2 = str()
@@ -121,12 +131,6 @@ class Routine:
 
     def make_options_file(self) -> str:
         """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
-        Args:
-            stru_file:
-            self:
-            lig_self_1:
-            lig_self_2:
-            work_dir:
 
         Returns:
             The path to the options file as a str().
@@ -167,18 +171,25 @@ class Routine:
             ])
 
         selected_protocol: str = f"{Path(__file__).parent.absolute()}/xmls/"
+        
+        nbr_1:int=num_rotatable_bonds(self.ligand_1)
+
         if self.ligand_2:
             selected_protocol += "2_ligands.xml"
+            nbr_2:int=num_rotatable_bonds(self.ligand_2)
+            nstruct:int = max(nbr_1*nbr_2*10,100)
         else:
             selected_protocol += "1_ligand.xml"
+            nstruct:int = max(nbr_1*20,100)
+        
 
         content.extend([
             "-parser",
-            f"   -protocol {selected_protocol}",  #TODO(CJ): fix this
+            f"   -protocol {selected_protocol}", 
             "-out",
             f"   -file:scorefile 'score.sc'",
             "   -level 200",
-            f"   -nstruct {self.n_structures}",  #TODO(CJ): change this
+            f"   -nstruct {nstruct}", 
             "   -overwrite",
             "   -path",
             f"       -all './complexes'",
@@ -476,18 +487,17 @@ class Routine:
         the EnzyRCD pipeline. A number of temporary files are created, so the result is a dictionary
         which maps diffrent versions of the ligand to their respective local paths. Makes uses of 
         caching mode for protonation states and conformers.
-
-        Arguments:
-            molfile: Path to the input ligand file.
-            res_code: The three letter PDB code for the ligand. MUST BE L01 or L02.
-            self: The Routine namedtuple() that comes from the parse_args() function.
-
-        Returns:
-            A Dict[str,str] mapping different versions of the ligand to their respective local paths.
-
         """
         def _preparation_implementation(molfile: str, res_code: str) -> Dict[str, str]:
-            """ """
+            """
+            
+            Args:
+                molfile: 
+                res_code:
+
+            Returns:
+                A file mapper dict() with (key, value) 
+            """
             file_mapper: Dict[str, str] = {'input': str(molfile)}
             file_mapper['deprotonated'] = eh.interface.pymol.de_protonate(
                 file_mapper['input'])
@@ -511,16 +521,15 @@ class Routine:
             temp = Path(file_mapper['kekulized'])
             temp = temp.parent / f"{temp.stem}_conformers.sdf"
 
-            #TODO(CJ): count the number of sp3 atoms in the system
-            if self.use_cache and temp.exists(
-            ) and temp.stat().st_size > 0:  #also checking that it isn't empty
+            if self.use_cache and fs.has_content( temp ):
                 file_mapper['conformers'] = str(temp)
-                eh.core._LOGGER.info(
-                    f"Using cached file {temp} for conformers...")
+                eh.core._LOGGER.info(f"Using cached file {temp} for conformers...")
             else:
                 file_mapper[
                     'conformers'] = eh.interface.bcl.generate_conformers(
-                        file_mapper['kekulized'])
+                        file_mapper['kekulized'],
+                        n_conformers=max(num_rotatable_bonds(file_mapper['input'])*20,100)
+                        )
 
             file_mapper['conformer_library'] = fix_conformers(
                 file_mapper['pdb'], file_mapper['conformers'], res_code)
@@ -578,7 +587,7 @@ class Routine:
                         rname_1='L02',
                         rnum_1=cst.rnum_1,
                         rchain_1=cst.rchain_1,
-                        ratoms_1=list(map(lambda kk: l2_atom_mapper[kk], cst.ratoms_1)),
+                        ratoms_1=list(map(lambda kk: l2_atom_mapper.get(kk,kk), cst.ratoms_1)),
                         rname_2=cst.rname_2,
                         rnum_2=cst.rnum_2,
                         rchain_2=cst.rchain_2,
@@ -1401,12 +1410,12 @@ def parse_args() -> Routine:
         help=
         'Engine for generating ligand conformers. Default is \'BCL\'. Allowed values are \'BCL\' and \'MOE\'.'
     )
-    parser.add_argument(
-        '--n_conformers',
-        type=int,
-        default=100,
-        help=
-        'Number of conformers to generate. Default is 100. Must be positive.')
+#    parser.add_argument(
+#        '--n_conformers',
+#        type=int,
+#        default=100,
+#        help=
+#        'Number of conformers to generate. Default is 100. Must be positive.')
     parser.add_argument(
         '--ligand_1',
         type=str,
@@ -1488,12 +1497,12 @@ def parse_args() -> Routine:
         )
         exit(1)
 
-    if args.n_conformers < 0:
-        eh.core._LOGGER.error(
-            f'--n_conformers must be a positive value. Supplied value {args.n_conformers} is invalid. Exiting...'
-        )
-        exit(1)
-
+#    if args.n_conformers < 0:
+#        eh.core._LOGGER.error(
+#            f'--n_conformers must be a positive value. Supplied value {args.n_conformers} is invalid. Exiting...'
+#        )
+#        exit(1)
+#
     if args.temp_handling not in "work_dir delete".split():
         eh.core._LOGGER.error(
             f'The suuplied temp_handling value "{args.temp_handling}" is invalid. Must be either "work_dir" or "delete". Exiting...'
@@ -1522,11 +1531,11 @@ def parse_args() -> Routine:
                    pH=args.pH,
                    mutations=mutations,
                    conformer_engine=args.conformer_engine,
-                   n_conformers=args.n_conformers,
+                   #n_conformers=args.n_conformers,
                    ligand_1=ligand_1,
                    ligand_2=ligand_2,
                    constraints=constraints,
-                   n_structures=args.n_struct,
+                   #n_structures=args.n_struct,
                    protonate_structure=args.protonate_structure,
                    work_dir=args.work_dir,
                    top_n=args.top_n,
@@ -1569,6 +1578,24 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
             print(orow["name"])
 
     return mapper
+
+
+def num_rotatable_bonds( fname : str, default:int=8 ) -> int:
+    """
+    
+    Args:
+        fname:
+        default:
+
+    Returns:
+        The number of rotatable bonds in the listed file.        
+
+    """
+    mol = Chem.MolFromMol2File(str(fname),removeHs=False,cleanupSubstructures=False)
+    if not mol:
+        return default 
+    return Descriptors.NumRotatableBonds(mol)
+
 
 if __name__ == '__main__':
     routine = parse_args()
