@@ -1,3 +1,6 @@
+import os
+import sys
+
 def check_residue_id(res_id: str) -> None:
     """Helper function that checks if a supplied string is a valid residue id in the PDB format. Supplied
     code must: 1) be three characters in length and 2) be all uppercase. Strips whitespace.

@@ -2,7 +2,7 @@
 ~/projects/EnzyRCD/EnzyRCD             "./production.pdb"           \
                 --pH 7.50                                           \
                 --constraints "./constraints.txt"                   \
-                --n_struct 1                                        \
                 --work_dir "./"                                     \
-                --temp_handling "delete"
+                --temp_handling "delete"                            \
+                --use_cache
 

@@ -21,6 +21,10 @@ from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
 from typing import List, Tuple, Dict, Union, Any
 
+import constraints as cst
+import utils as uu
+
+
 class Routine:
     """Class that holds somewhat validated arguments used to run the EnzyRCD routine. Also serves
     as a temporary holding place for the current structure file and ligand temp files. Will exit if an invalid
@@ -41,7 +45,7 @@ class Routine:
         self.l1_native = False
         self.ligand_2 = str()
         self.l2_native = False
-        self.constraints = List[RosettaCst]
+        self.constraints = List[cst.RosettaCst]
         self.n_structures = int()
         self.work_dir = str()
         self.top_n = int()
@@ -86,7 +90,7 @@ class Routine:
         self.place_ligands()
 
         self.add_constraints()
-
+        exit( 0 )
         self.relax()
 
         self.make_options_file()
@@ -318,33 +322,33 @@ class Routine:
 
         res_mappings = list()
 
-        for cidx, cst in enumerate(self.constraints):
+        for cidx, r_cst in enumerate(self.constraints):
 
-            validate_cst(self.structure, cst)
+            cst.validate_cst(self.structure, r_cst)
 
             if cst_content:
                 cst_content.append("")
 
             #TODO(CJ): add some nicer spacings into here
             res_mappings.append(
-                f"REMARK 666 MATCH TEMPLATE {cst.rchain_1} {cst.rname_1}  {cst.rnum_1} MATCH MOTIF {cst.rchain_2} {cst.rname_2}  {cst.rnum_2}  {cidx+1}  1"
+                f"REMARK 666 MATCH TEMPLATE {r_cst.rchain_1} {r_cst.rname_1}  {r_cst.rnum_1} MATCH MOTIF {r_cst.rchain_2} {r_cst.rname_2}  {r_cst.rnum_2}  {cidx+1}  1"
             )
 
             cst_content.append("CST::BEGIN")
             cst_content.append(
-                f"   TEMPLATE::  ATOM_MAP: 1 atom_name: {' '.join(cst.ratoms_1)}"
+                f"   TEMPLATE::  ATOM_MAP: 1 atom_name: {' '.join(r_cst.ratoms_1)}"
             )
             cst_content.append(
-                f"   TEMPLATE::  ATOM_MAP: 1 residue3: {cst.rname_1}")
+                f"   TEMPLATE::  ATOM_MAP: 1 residue3: {r_cst.rname_1}")
             cst_content.append("")
             cst_content.append(
-                f"   TEMPLATE::  ATOM_MAP: 2 atom_name: {' '.join(cst.ratoms_2)}"
+                f"   TEMPLATE::  ATOM_MAP: 2 atom_name: {' '.join(r_cst.ratoms_2)}"
             )
             cst_content.append(
-                f"   TEMPLATE::  ATOM_MAP: 2 residue3: {cst.rname_2}")
+                f"   TEMPLATE::  ATOM_MAP: 2 residue3: {r_cst.rname_2}")
             cst_content.append("")
 
-            for ridx, rule in enumerate(cst.constraints):
+            for ridx, rule in enumerate(r_cst.constraints):
                 cst_content.append(
                     f"   CONSTRAINT::  {rule[0]}: {rule[1]} {rule[2]} {rule[3]} {ridx}"
                 )
@@ -365,15 +369,7 @@ class Routine:
     def relax(self) -> None:
         """Method that checks if the bare polypeptide chain has a RosettaEnergy <= 0.0. Disregards
         ligands. If polypeptide chain RosettaEnergy > 0, tries a simplistic relaxation that mainly
-        targets replusion energy in Rosetta.
-        
-        Args:
-            self: 
-            
-        Returns:
-            Nothing.
-    
-        """
+        targets replusion energy in Rosetta."""
         eflags=['-extra_res_fa', str(self.l1_fm['self'])]
         if self.ligand_2:
             eflags.append(str(self.l2_fm['self']))
@@ -381,7 +377,7 @@ class Routine:
 
         df: pd.DataFrame = eh.interface.rosetta.loop_relax(
             self.structure,
-            10,
+            10, #TODO(CJ): parameterize this
             extra_flags=eflags
         )
 
@@ -451,8 +447,17 @@ class Routine:
                 )
                 exit(1)
 
-            file_mapper['protonated'] = eh.interface.moe.protonate(
-                file_mapper['deprotonated'])
+            temp = Path(file_mapper['deprotonated'])
+            temp = temp.parent / f"{temp.stem}_protonated.mol2"
+            
+            if self.use_cache and fs.has_content( temp ):
+                file_mapper['protonated'] = temp
+                eh.core._LOGGER.info(f"Using cached file {temp} for protonation...")
+            else:
+                file_mapper['protonated'] = eh.interface.moe.protonate(
+                    file_mapper['deprotonated'])
+
+
             (self_file, pdb_file) = eh.interface.rosetta.parameterize_ligand(
                 file_mapper['protonated'], res_code)
             file_mapper['self'] = self_file
@@ -471,25 +476,25 @@ class Routine:
                         file_mapper['kekulized'],
                         n_conformers=max(num_rotatable_bonds(file_mapper['input'])*20,100)
                         )
-
-            file_mapper['conformer_library'] = fix_conformers(
-                file_mapper['pdb'], file_mapper['conformers'], res_code)
-            file_mapper['conformer_library'] = shutil.move(
-                file_mapper['conformer_library'],
-                Path(self.work_dir) /
-                Path(file_mapper['conformer_library']).name)
+            
+            temp = Path(self.work_dir).parent / Path(file_mapper['conformers']).with_suffix('.pdb').name
+            
+            if self.use_cache and fs.has_content( temp ):
+                file_mapper['conformer_library'] = str(temp)
+                eh.core._LOGGER.info(f"Using cached file {temp} for conformer library consolidation...")
+            else:
+                file_mapper['conformer_library'] = fix_conformers(file_mapper['pdb'], file_mapper['conformers'], res_code)
+                file_mapper['conformer_library'] = fs.safe_mv(file_mapper['conformer_library'], self.work_dir)
+            
             eh.interface.rosetta.add_conformers(
                 file_mapper['self'], file_mapper['conformer_library'])
 
-            file_mapper['self'] = shutil.move(
-                file_mapper['self'],
-                Path(self.work_dir) / Path(file_mapper['self']).name)
+            file_mapper['self'] = fs.safe_mv( file_mapper['self'], self.work_dir ) 
             #TODO(CJ): need to move the conformers here and set them up correctly
             return deepcopy(file_mapper)
 
         self.l1_fm = _preparation_implementation(self.ligand_1, "L01")
         l1_atom_mapper:Dict[str,str] = map_atoms("Y.1.L01", self.ligand_1, self.l1_fm['pdb'])
-
         for cidx,cst in enumerate(self.constraints):
             if cst.rchain_1 == 'Y':
                 self.constraints[cidx].set(
@@ -537,7 +542,7 @@ class Routine:
         pymol.invocation.parse_args(['pymol',
                                      '-q'])  # optional, for quiet flag
         pymol2.SingletonPyMOL().start()
-        redirect_stdout()
+        uu.redirect_stdout()
 
         # making the working directory... maybe should clean this out first
         eh.core._LOGGER.info(
@@ -661,8 +666,6 @@ class Routine:
         temp_df['resi'] = df.resi.astype(int)
         temp_df.drop_duplicates(inplace=True)
         
-        #print(temp_df)
-        #exit( 1 )
 
         if not aa_only:
 
@@ -735,17 +738,16 @@ class Routine:
             ("load", outfile)
         ])
 
-        cmd.delete('all')
-        cmd.load(outfile)
-        stored.holder = []
-        cmd.iterate('all', 'stored.holder.append((chain, resn, resi))')
-        canonical = pd.DataFrame(data=stored.holder, columns="chain resn resi".split())
+        canonical: pd.DataFrame = eh.interface.pymol.collect(
+            outfile, "chain resn resi".split())
         canonical['resi'] = canonical.resi.astype(int)
+        
         # making sure the residues are named correctly
-        just_residues = canonical.drop_duplicates()
-        just_residues = just_residues[just_residues.chain!='A']
 
-        for i,row in just_residues.iterrows():
+        for i,row in canonical.drop_duplicates().iterrows():
+            if row.chain == 'A':
+                continue
+
             if row.chain == 'Y' and row.resn != 'L01':
                 eh.core._LOGGER.info(f"Renaming residue Y.{row.resn}.{row.resi} to Y.L01.{row.resi}")
                 eh.interface.pymol.execute([
@@ -766,9 +768,9 @@ class Routine:
                     ("delete", "all"),
                 ])
         
-        #canonical: pd.DataFrame = eh.interface.pymol.collect(
-        #    outfile, "chain resn resi".split())
-        #canonical['resi'] = df.resi.astype(int)
+        canonical: pd.DataFrame = eh.interface.pymol.collect(
+            outfile, "chain resn resi".split())
+        canonical['resi'] = canonical.resi.astype(int)
         
         for i, row in canonical.drop_duplicates().iterrows():
 
@@ -1105,12 +1107,6 @@ def parse_args() -> Routine:
         help=
         'Engine for generating ligand conformers. Default is \'BCL\'. Allowed values are \'BCL\' and \'MOE\'.'
     )
-#    parser.add_argument(
-#        '--n_conformers',
-#        type=int,
-#        default=100,
-#        help=
-#        'Number of conformers to generate. Default is 100. Must be positive.')
     parser.add_argument(
         '--ligand_1',
         type=str,
@@ -1129,16 +1125,6 @@ def parse_args() -> Routine:
         help=
         'Formatted constraints OR the path to a file with constraints int ethe same format. Not required but must exist if supplied.'
     )
-    parser.add_argument(
-        '--n_struct',
-        type=int,
-        help='Number of structures to make in the RosettaScripts portion.',
-        default=50)
-    parser.add_argument(
-        '--protonate_structure',
-        type=bool,
-        default=True,
-        help='Whether or not the structure should be protonated.')
     parser.add_argument(
         '--work_dir',
         type=str,
@@ -1180,24 +1166,12 @@ def parse_args() -> Routine:
         )
         exit(1)
 
-    if args.n_struct <= 0.0:
-        eh.core._LOGGER.error(
-            f'The supplied nstruct is {argsn.n_struct}. Must be greater than 0. Exiting...'
-        )
-        exit(1)
-
     if args.conformer_engine not in ["BCL", "MOE"]:
         eh.core._LOGGER.error(
             f'The supplied conformer engine "{args.conformer_engine}" is not supported. Allowed Options are BCL or MOE. Exiting...'
         )
         exit(1)
 
-#    if args.n_conformers < 0:
-#        eh.core._LOGGER.error(
-#            f'--n_conformers must be a positive value. Supplied value {args.n_conformers} is invalid. Exiting...'
-#        )
-#        exit(1)
-#
     if args.temp_handling not in "work_dir delete".split():
         eh.core._LOGGER.error(
             f'The suuplied temp_handling value "{args.temp_handling}" is invalid. Must be either "work_dir" or "delete". Exiting...'
@@ -1217,21 +1191,18 @@ def parse_args() -> Routine:
         fs.check_file_exists(args.ligand_2)
         ligand_2 = args.ligand_2
 
-    constraints: List[RosettaCst] = list()
+    constraints: List[cst.RosettaCst] = list()
 
     if args.constraints:
-        constraints = parse_constraints(args)
+        constraints = cst.parse_constraints(args.constraints)
 
     return Routine(structure=args.structure,
                    pH=args.pH,
                    mutations=mutations,
                    conformer_engine=args.conformer_engine,
-                   #n_conformers=args.n_conformers,
                    ligand_1=ligand_1,
                    ligand_2=ligand_2,
                    constraints=constraints,
-                   #n_structures=args.n_struct,
-                   protonate_structure=args.protonate_structure,
                    work_dir=args.work_dir,
                    top_n=args.top_n,
                    temp_handling=args.temp_handling,
@@ -1250,8 +1221,9 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
     mapper = dict()
     for o, orow in df1.iterrows():
         for n, nrow in df2.iterrows():
-            if same(orow.point, nrow.point):
-                eh.core._LOGGER.info(f"Remapped atom '{res_name}.{orow['name']}' -> '{res_name}.{nrow['name']}'")
+            if same(orow.point, nrow.point) and orow['name'][0] == nrow['name'][0]:
+                if orow['name'] != nrow['name']:
+                    eh.core._LOGGER.info(f"Remapped atom '{res_name}.{orow['name']}' -> '{res_name}.{nrow['name']}'")
                 mapper[orow["name"]] = nrow["name"]
                 break
         else:
@@ -1263,7 +1235,7 @@ def map_atoms(res_name:str, fname1:str, fname2:str) -> Dict[str,str]:
             continue
 
         for n, nrow in df2.iterrows():
-            if same(orow.point, nrow.point, 0.7):
+            if same(orow.point, nrow.point, 1.0) and orow['name'][0] == nrow['name'][0]:
                 eh.core._LOGGER.info(f"Remapped atom '{res_name}.{orow['name']}' -> '{res_name}.{nrow['name']}'")
                 mapper[orow["name"]] = nrow["name"]
                 break

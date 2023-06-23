@@ -1,5 +1,12 @@
+from pathlib import Path
+from typing import Any, Union, List
 
+
+import pandas as pd
 import enzy_htp as eh
+from enzy_htp.core import file_system as fs
+
+import utils as uu
 
 class RosettaCst:
     """TODO"""
@@ -66,14 +73,13 @@ def validate_cst(start: Union[str, Path, pd.DataFrame],
         df: pd.DataFrame = start
     else:
         fs.check_file_exists(str(start))
-        cmd.delete('all')
-        cmd.load(start)
-        df: pd.DataFrame = make_df('all')
-        cmd.delete('all')
+        df = eh.interface.pymol.collect(
+            start, "resi name chain resn".split()
+        )
 
     for ratom in cst.ratoms_1:
 
-        row: pd.Series = df[(df.aname == ratom) & (df.resn == cst.rname_1) &
+        row: pd.Series = df[(df['name'] == ratom) & (df.resn == cst.rname_1) &
                             (df.resi == str(cst.rnum_1)) &
                             (df.chain == cst.rchain_1)]
 
@@ -85,7 +91,7 @@ def validate_cst(start: Union[str, Path, pd.DataFrame],
 
     for ratom in cst.ratoms_2:
 
-        row: pd.Series = df[(df.aname == ratom) & (df.resn == cst.rname_2) &
+        row: pd.Series = df[(df['name'] == ratom) & (df.resn == cst.rname_2) &
                             (df.resi == str(cst.rnum_2)) &
                             (df.chain == cst.rchain_2)]
 
@@ -146,7 +152,7 @@ def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
                     temp.append(float(tt))
 
             var['constraints'].append(temp)
-
+    
     return RosettaCst(rname_1=var['rname_1'],
                       rnum_1=var['rnum_1'],
                       ratoms_1=var['ratoms_1'],
@@ -159,12 +165,14 @@ def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
 
 
 
-def parse_constraints(args: Routine) -> List[RosettaCst]:
-    """ TODO(CJ) """
-    result: List[RosettaCst] = list()
-    c_file = Path(args.constraints)
+def parse_constraints(raw:str) -> List[RosettaCst]:
+    """
 
-    if likely_a_file(args.constraints):
+    """
+    result: List[RosettaCst] = list()
+    c_file = Path(raw)
+
+    if uu.likely_a_file(raw):
         fs.check_file_exists(c_file)
 
     if c_file.exists():
@@ -172,11 +180,11 @@ def parse_constraints(args: Routine) -> List[RosettaCst]:
         content = ''.join(content.split())
         if not content:
             eh.core._LOGGER.warning(
-                f"The supplied file '{args.constraints}' contained no constraints. Continuing..."
+                f"The supplied file '{raw}' contained no constraints. Continuing..."
             )
             return result
     else:
-        content: str = args.constraints
+        content: str = raw 
         if not content:
             eh.core._LOGGER.warning(
                 "The supplied argument for --constraints is empty. Continuing..."

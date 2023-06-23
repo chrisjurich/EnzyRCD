@@ -4,7 +4,5 @@
                 --ligand_2 L02.mol2                                 \
                 --pH 7.50                                           \
                 --constraints "./constraints.txt"                   \
-                --n_struct 100                                      \
                 --work_dir "./"                                     \
-                --temp_handling "delete"
-
+                --use_cache
