@@ -3,5 +3,4 @@
                 --pH 8.0                                            \
                 --constraints "./constraints.txt"                   \
                 --work_dir "./"                                     \
-                --temp_handling "delete"
-
+                --use_cache

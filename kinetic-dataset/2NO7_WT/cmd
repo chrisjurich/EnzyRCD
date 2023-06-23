@@ -4,6 +4,5 @@
                 --constraints "./constraints.txt"                   \
                 --ligand_2 './L02.mol2'                             \
                 --work_dir "./"                                     \
-                --temp_handling "delete"                            \
                 --use_cache
 

@@ -5,5 +5,4 @@
                 --pH 7.00                                       \
                 --constraints "./constraints.txt"               \
                 --work_dir "./"                                 \
-                --temp_handling "delete" 
-
+                --use_cache
