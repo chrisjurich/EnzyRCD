@@ -21,44 +21,6 @@ from enzy_htp.core import file_system as fs
 from collections import namedtuple, defaultdict
 from typing import List, Tuple, Dict, Union, Any
 
-
-class RosettaCst:
-    """TODO"""
-    def __init__(self, **kwargs):
-        """"""
-        self.rname_1 = None 
-        self.rnum_1 = None
-        self.ratoms_1 = None
-        self.rchain_1 = None 
-        self.rname_2 = None
-        self.rnum_2 = None
-        self.ratoms_2 = None
-        self.rchain_2 = None
-        self.constraints = None
-
-        ALLOWED:List[str]='rname_1 rnum_1 ratoms_1 rchain_1 rname_2 rnum_2 ratoms_2 rchain_2 constraints'.split()
-        
-        for k,v in kwargs.items():
-            if k not in ALLOWED:
-                eh.core._LOGGER.error(f"The supplied keyword '{k}' is not valid for the RosettaCst() ctor. Exiting...")
-                exit( 1 )
-            setattr(self, k, v)
-
-            ALLOWED.remove( k )
-
-        if ALLOWED:
-            eh.core._LOGGER.error(f"Missing the following keyword arguments for RosettaCst() ctor: {', '.join(ALLOWED)}. Exiting...")
-            exit( 1 )
-
-
-    def set(self, key:str, value: Any) -> None:
-        """ """
-        if key not in self.__dict__:
-            assert False
-
-        self.__dict__[key] = value
-
-
 class Routine:
     """Class that holds somewhat validated arguments used to run the EnzyRCD routine. Also serves
     as a temporary holding place for the current structure file and ligand temp files. Will exit if an invalid
@@ -149,12 +111,8 @@ class Routine:
                           self.l2_fm if self.ligand_2 else None)
         log_elapsed_time(self)
 
-    def make_options_file(self) -> str:
-        """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol.
-
-        Returns:
-            The path to the options file as a str().
-        """
+    def make_options_file(self) -> None:
+        """Function that creates the options file for a RosettaScripts run for the RosettaLigand protocol."""
 
         #TODO(CJ): this should check if the stru_file is properly formatted... i.e. A, Y, Z
         work_dir = self.work_dir
@@ -185,7 +143,6 @@ class Routine:
         ])
 
         if self.cst_file:
-            #TODO(CJ): need to add in the constraints here
             content.extend([
                 "-enzdes", f"    -cstfile '{Path(self.cst_file).absolute()}'"
             ])
@@ -222,22 +179,13 @@ class Routine:
         fs.safe_rmdir(f"{work_dir}/complexes/")
         fs.safe_mkdir(f"{work_dir}/complexes/")
 
-        #TODO(CJ): clean out the complexes folder if it already exists
-
         self.score_file: str = f"{work_dir}/complexes/score.sc"
         self.option_file = fname.absolute()
 
         fs.safe_rm(self.score_file)
 
     def dock(self) -> None:
-        """
-
-        Args:
-            self: The Routine() class.
-
-        Returns:
-            Nothing.
-        """
+        """ """
         #fs.safe_rm(score_file)
         #fs.safe_rm( l1_fm[1] )
         #fs.safe_rm( ligand_2_parameters[1] )
@@ -355,6 +303,7 @@ class Routine:
 
         """
         #TODO(CJ): should remove existing constraint remark lines in the .pdb file
+        #TODO(CJ): break some of this out into smaller functions  in constraints.py
         fs.check_file_exists(self.structure)
 
         #remove_existing_constraints()
@@ -879,132 +828,7 @@ class Routine:
         self.structure = str(outfile)
 
 
-def parse_constraints(args: Routine) -> List[RosettaCst]:
-    """ TODO(CJ) """
-    result: List[RosettaCst] = list()
-    c_file = Path(args.constraints)
 
-    if likely_a_file(args.constraints):
-        fs.check_file_exists(c_file)
-
-    if c_file.exists():
-        content: str = fs.content_from_file(c_file)
-        content = ''.join(content.split())
-        if not content:
-            eh.core._LOGGER.warning(
-                f"The supplied file '{args.constraints}' contained no constraints. Continuing..."
-            )
-            return result
-    else:
-        content: str = args.constraints
-        if not content:
-            eh.core._LOGGER.warning(
-                "The supplied argument for --constraints is empty. Continuing..."
-            )
-            return result
-
-    for chunk in content.split('),('):
-        if chunk[0] != '(':
-            chunk = '(' + chunk
-        if chunk[-1] != ')':
-            chunk += ')'
-
-        result.append(parse_rosetta_cst(chunk))
-
-    return result
-
-
-def likely_a_file(raw: str) -> bool:
-    """Applies heuristics to guess if the supplied str() is a filepath or not. Checks if:
-        + has './' 
-        + has '//' 
-        + has a suffix as defined by pathlib
-
-    Args:
-        raw: The candidate str() to check.
-    
-    Returns:
-        Whether the supplied str() is likely a file based on heuristics.
-    """
-    if raw.find('./') != -1:
-        return True
-
-    if raw.find('//') != -1:
-        return True
-
-    temp = Path(raw)
-    if len(temp.suffix):
-        return True
-
-    return False
-
-
-def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
-    """Takes raw constraints and converts them into RosettaCst() namedtuple()'s,  
-    
-    Args:
-        raw:
-
-    Returns:
-        A list of RosettaCst() namedtuple()'s.
-
-    """
-    raw = raw[1:-1]
-    var = {'constraints': []}
-    ALLOWED_CSTS: Set[str] = set(
-        "distanceAB angle_A angle_B torsion_A torsion_B torsion_AB".split())
-
-    tokens: List[str] = list(filter(len, raw.split(')(')))
-
-    if len(tokens) < 3:
-        eh.core._LOGGER.info(
-            f"There must be at least 3 blocks in an individual constraint. There are only {len(tokens)} in '{raw}'. Exiting..."
-        )
-        exit(1)
-
-    for tidx, tk in enumerate(tokens):
-
-        spl: List[str] = tk.split(',')
-        if tidx < 2:
-            var[f"rchain_{tidx+1}"] = spl[0]
-            var[f"rnum_{tidx+1}"] = int(spl[1])
-            var[f"rname_{tidx+1}"] = spl[2]
-            var[f"ratoms_{tidx+1}"] = spl[3:]
-        else:
-            if spl[0] not in ALLOWED_CSTS:
-                eh.core._LOGGER.error(
-                    f"The supplied constraint type {spl[0]} is not supported. Allowed are: {', '.join(sorted(list(ALLOWED_CSTS)))}. Exiting..."
-                )
-                exit(1)
-
-            temp = [spl[0]]
-            for tt in spl[1:]:
-                if tt.find('.') == -1:
-                    temp.append(int(tt))
-                else:
-                    temp.append(float(tt))
-
-            var['constraints'].append(temp)
-
-    return RosettaCst(rname_1=var['rname_1'],
-                      rnum_1=var['rnum_1'],
-                      ratoms_1=var['ratoms_1'],
-                      rchain_1=var['rchain_1'],
-                      rname_2=var['rname_2'],
-                      rnum_2=var['rnum_2'],
-                      ratoms_2=var['ratoms_2'],
-                      rchain_2=var['rchain_2'],
-                      constraints=var['constraints'])
-
-
-def redirect_stdout():
-    #print "Redirecting stdout"
-    sys.stdout.flush()  # <--- important when redirecting to files
-    newstdout = os.dup(1)
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    os.dup2(devnull, 1)
-    os.close(devnull)
-    sys.stdout = os.fdopen(newstdout, 'w')
 
 
 def make_df(sele: str) -> pd.DataFrame:
@@ -1054,29 +878,6 @@ def check_mutations(params) -> List[str]:
     return mutations
 
 
-def check_residue_id(res_id: str) -> None:
-    """Helper function that checks if a supplied string is a valid residue id in the PDB format. Supplied
-    code must: 1) be three characters in length and 2) be all uppercase. Strips whitespace.
-    Args:
-        res_id: The residue id to check as a str().
-    Returns:
-        Nothing.
-    """
-    res_id = ''.join(res_id.split())
-
-    if len(res_id) != 3:
-        eh.core._LOGGER.error(
-            f"The supplied residue id '{res_id}' is invalid. Must be 3 characters long. Exiting..."
-        )
-        exit(1)
-
-    if not res_id.isupper():
-        eh.core._LOGGER.error(
-            f"The supplied residue id '{res_id}' is invalid. Must be uppercase. Exiting..."
-        )
-        exit(1)
-
-
 def fix_conformers(template: str, conformers: str, res_code: str) -> str:
     """ """
     cmd.delete('all')
@@ -1121,14 +922,6 @@ def fix_conformers(template: str, conformers: str, res_code: str) -> str:
     outfile = Path(conformers).with_suffix('.pdb')
     fs.write_lines(outfile, content)
     return str(outfile)
-
-
-def protonate_ligand(molfile: str) -> str:
-    """ """
-    local = eh.interface.pymol.convert(molfile, new_ext='.mol2')
-    local = eh.interface.pymol.de_protonate(local)
-    protonated = eh.interface.moe.protonate(local)
-    return eh.interface.pymol.convert(protonated, new_ext='.sdf')
 
 
 def log_elapsed_time(params: Routine) -> None:
@@ -1240,59 +1033,6 @@ def kekulize(in_file: str, out_format: str = '.sdf') -> str:
         exit(1)
 
     return str(outfile)
-
-
-def validate_cst(start: Union[str, Path, pd.DataFrame],
-                 cst: RosettaCst) -> None:
-    """Function that checks if all the atoms for the supplied enzymatic constraint exist in the 
-    supplied .pdb file. Logs all invalid atoms for the specific constraint and exits afterwards.
-
-    Args:
-        start: Either a str()/Path() to a .pdb file or a pandas DataFrame from one.
-        cst: A RosettaCst() namedtuple().
-
-    Returns:
-        Nothing.
-    """
-
-    bad_atom: bool = False
-
-    if type(start) == pd.DataFrame:
-        df: pd.DataFrame = start
-    else:
-        fs.check_file_exists(str(start))
-        cmd.delete('all')
-        cmd.load(start)
-        df: pd.DataFrame = make_df('all')
-        cmd.delete('all')
-
-    for ratom in cst.ratoms_1:
-
-        row: pd.Series = df[(df.aname == ratom) & (df.resn == cst.rname_1) &
-                            (df.resi == str(cst.rnum_1)) &
-                            (df.chain == cst.rchain_1)]
-
-        if len(row) == 0:
-            eh.core._LOGGER.error(
-                f'Atom {cst.rchain_1}.{cst.rnum_1}.{cst.rname_1}.{ratom} does not exist'
-            )
-            bad_atom = True
-
-    for ratom in cst.ratoms_2:
-
-        row: pd.Series = df[(df.aname == ratom) & (df.resn == cst.rname_2) &
-                            (df.resi == str(cst.rnum_2)) &
-                            (df.chain == cst.rchain_2)]
-
-        if len(row) == 0:
-            eh.core._LOGGER.error(
-                f'Atom {cst.rchain_2}.{cst.rnum_2}.{cst.rname_2}.{ratom} does not exist'
-            )
-            bad_atom = True
-
-    if bad_atom:
-        eh.core._LOGGER.error("Errors in supplied constraints. Exiting...")
-        exit(1)
 
 
 def handle_temp_files(params: Routine, mapper1: Dict[str, str],
