@@ -374,27 +374,48 @@ class Routine:
         if self.ligand_2:
             eflags.append(str(self.l2_fm['self']))
 
+       
+        r_complex:str=None
+        if self.use_cache:
+            helper = Path(self.structure)
+            target = helper.parent / f"{helper.stem}_0001.pdb"
+            if target.exists():
+                eh.core._LOGGER.info(f"Found existing relaxed complex {r_complex}! Scoring...")                
 
-        df: pd.DataFrame = eh.interface.rosetta.loop_relax(
-            self.structure,
-            10, #TODO(CJ): parameterize this
-            extra_flags=eflags
-        )
+            temp_score = eh.interface.rosetta.score( str(target), extra_flags=eflags )
 
-        if df.total_score[0] >= 0.0:
-            eh.core._LOGGER.error(
-                f"All relaxed structures have energies >= 0 REU (min={df.total_score[0]:.3f}). Manual relaxation is needed. Exiting..."
+            if temp_score < 0.0:
+                eh.core._LOGGER.info(f"Existing complex has score of {temp_score:.3f} REU. Using this structure!")
+                r_complex = str(target)
+            else:
+                eh.core._LOGGER.warning(f"Existing complex has score of {temp_score:.3f} REU. Minimization will have to be re-run.")
+
+
+        if not r_complex:
+            df: pd.DataFrame = eh.interface.rosetta.loop_relax(
+                self.structure,
+                1, #TODO(CJ): parameterize this
+                extra_flags=eflags
             )
-            exit(1)
+
+            if df.total_score[0] >= 0.0:
+                eh.core._LOGGER.error(
+                    f"Relaxed structure has an energy >= 0 REU (min={df.total_score[0]:.3f}). Manual relaxation is needed. Exiting..."
+                )
+                exit(1)
+            else:
+                 eh.core._LOGGER.error(
+                    f"Relaxed structure has an energy of {df.total_score[0]:.3f} REU. Using this structure and continuing!"
+                )
+                r_complex = df.description[0]               
 
 
-        fpath = Path(self.structure)
-        r_complex = str(fpath.parent / f"rc.pdb")
+        rc_dest = str(Path(self.structure).parent / f"rc.pdb")
+        
+        self.structure = fs.safe_mv(r_complex, rc_dest)
+        
+        eh.core._LOGGER.info(f"Minimized structure moved to '{r_complex}' for creation of reaction complex.")
 
-        fs.safe_mv(df.description[0], r_complex)
-        eh.core._LOGGER.info(f"Selected run '{df.description[0]}' and moved to '{r_complex}' for creation of reaction complex.")
-
-        self.structure = relaxed
 
     def mutate(self) -> None:
         """Wrapper function that performs mutations specified on the specified structure file

@@ -147,4 +147,4 @@ ICOOR_INTERNAL    H8  -116.869543   65.749222    1.090015   C5    O2    N5
 ICOOR_INTERNAL    H3  -123.265186   76.671571    1.090026   C2    C1    O2 
 ICOOR_INTERNAL    H1  -119.794130   70.197117    1.090066   C1    O1    C2 
 ICOOR_INTERNAL    H2  -120.407820   70.197112    1.090002   C1    O1    H1 
-PDB_ROTAMERS /home/jurichc/projects/EnzyRCD/kinetic-dataset/6Q3W_WT/L01_deprotonated_protonated_conformers.pdb
+PDB_ROTAMERS /gpfs52/home/jurichc/projects/EnzyRCD/kinetic-dataset/6Q3W_WT/L01_deprotonated_protonated_conformers.pdb
