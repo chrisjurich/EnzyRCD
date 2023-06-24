@@ -90,7 +90,7 @@ class Routine:
         self.place_ligands()
 
         self.add_constraints()
-        exit( 0 )
+        
         self.relax()
 
         self.make_options_file()
@@ -383,15 +383,16 @@ class Routine:
 
         if df.total_score[0] >= 0.0:
             eh.core._LOGGER.error(
-                f"The relaxed structure has an REU >= 0 ({df.total_score[0]:.3f}). Manual relaxation is needed. Exiting..."
+                f"All relaxed structures have energies >= 0 REU (min={df.total_score[0]:.3f}). Manual relaxation is needed. Exiting..."
             )
             exit(1)
 
-        #TODO(CJ): log something here 
-        fpath = Path(self.structure)
-        relaxed = str(fpath.parent / f"{fpath.stem}_relaxed.pdb")
 
-        shutil.move(df.description[0], relaxed)
+        fpath = Path(self.structure)
+        r_complex = str(fpath.parent / f"rc.pdb")
+
+        fs.safe_mv(df.description[0], r_complex)
+        eh.core._LOGGER.info(f"Selected run '{df.description[0]}' and moved to '{r_complex}' for creation of reaction complex.")
 
         self.structure = relaxed
 
