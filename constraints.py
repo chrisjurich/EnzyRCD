@@ -51,7 +51,10 @@ class RosettaCst:
         """
         pass
 
-
+    def contains(self, chain:str, res_num:int) -> bool:
+        """ """
+        #TODO(CJ): 
+        pass
 
 
 def validate_cst(start: Union[str, Path, pd.DataFrame],

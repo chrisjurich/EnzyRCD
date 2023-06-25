@@ -89,9 +89,9 @@ class Routine:
 
         self.place_ligands()
 
-        self.add_constraints()
-        
         self.relax()
+
+        self.add_constraints()
 
         self.make_options_file()
 
@@ -379,16 +379,17 @@ class Routine:
         if self.use_cache:
             helper = Path(self.structure)
             target = helper.parent / f"{helper.stem}_0001.pdb"
+            
             if target.exists():
-                eh.core._LOGGER.info(f"Found existing relaxed complex {r_complex}! Scoring...")                
+                eh.core._LOGGER.info(f"Found existing relaxed complex {target}! Scoring...")                
 
-            temp_score = eh.interface.rosetta.score( str(target), extra_flags=eflags )
+                temp_score = eh.interface.rosetta.score( str(target), extra_flags=eflags )
 
-            if temp_score < 0.0:
-                eh.core._LOGGER.info(f"Existing complex has score of {temp_score:.3f} REU. Using this structure!")
-                r_complex = str(target)
-            else:
-                eh.core._LOGGER.warning(f"Existing complex has score of {temp_score:.3f} REU. Minimization will have to be re-run.")
+                if temp_score < 0.0:
+                    eh.core._LOGGER.info(f"Existing complex has score of {temp_score:.3f} REU. Using this structure!")
+                    r_complex = str(target)
+                else:
+                    eh.core._LOGGER.warning(f"Existing complex has score of {temp_score:.3f} REU. Minimization will have to be re-run.")
 
 
         if not r_complex:
@@ -404,7 +405,7 @@ class Routine:
                 )
                 exit(1)
             else:
-                 eh.core._LOGGER.error(
+                eh.core._LOGGER.error(
                     f"Relaxed structure has an energy of {df.total_score[0]:.3f} REU. Using this structure and continuing!"
                 )
                 r_complex = df.description[0]               
@@ -412,20 +413,15 @@ class Routine:
 
         rc_dest = str(Path(self.structure).parent / f"rc.pdb")
         
-        self.structure = fs.safe_mv(r_complex, rc_dest)
+        self.structure = shutil.copy(r_complex, rc_dest)
         
         eh.core._LOGGER.info(f"Minimized structure moved to '{r_complex}' for creation of reaction complex.")
 
 
     def mutate(self) -> None:
-        """Wrapper function that performs mutations specified on the specified structure file
-    
-        Args:
-            selfs: A Routine() class.
-    
-        Returns:
-            Nothing.
-        """
+        """Wrapper function that performs mutations specified on the Enzyme complex. Checks if the supplied mutation(s) invalidated 
+        any of the supplied constraints and removes the constraint block if so."""
+        
         if not self.mutations:
             eh.core._LOGGER.info("No mutations found.")
             return
@@ -437,7 +433,17 @@ class Routine:
                                                mutations=self.mutation,
                                                engine='rosetta')
 
-        self.structure = curren - structure
+        #need to 1) remove constraints that have a given mutated residue
+        valid = list()
+        for mm in self.mutations:
+            # check if contains mutation
+            # if so, kill it
+            # else, add to valid
+            assert False
+
+
+
+        self.structure = current_structure
         eh.core._LOGGER.info(
             f"Mutagenesis complete. Current file is {current_structure}")
 
