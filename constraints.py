@@ -73,18 +73,20 @@ class RosettaCst:
 
         sele1, sele2, sele3, sele4 = None, None, None, None
 
-        args:List[Tuple] = list()
-        
+        differences:List[float] = list() 
+
         for cst in self.constraints:
+            #print(cst)
             #TODO(CJ): do a tuple expansion here
             cst_type:str = cst[0]
+            target = cst[1]
+            tolerance = cst[2]
 
             if cst_type.startswith('distance'):
                 sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
                 sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
-                args.append(
-                    ('distance', sele1, sele2)
-                )
+                dist:float = eh.interface.pymol.execute( [('distance', sele1, sele2)] )[0]
+                differences.append( abs(dist - target ) / tolerance) 
             elif cst_type.startswith('angle'):
                 if cst_type == 'angleA':
                     sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[1]}"
@@ -94,6 +96,7 @@ class RosettaCst:
                     sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
                     sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
                     sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
+                assert False
                 args.append(
                     ('angle', sele1, sele2, sele3)
                 )
@@ -113,11 +116,12 @@ class RosettaCst:
                     sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
                     sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
                     sele4 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[2]}"
+                assert False
                 args.append(
                     ('dihedral', sele1, sele2, sele3, sele4 )
                 )
 
-        result:List[float] = eh.interface.pymol.execute(args)
+        return differences
 
     def contains(self, chain:str, res_num:int) -> bool:
         """Does the constraint contain the residue at <chain>.<res_num>?"""

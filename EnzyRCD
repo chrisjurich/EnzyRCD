@@ -2,6 +2,7 @@
 import re
 import os
 import sys
+import json
 import time
 import rdkit
 import shutil
@@ -89,15 +90,46 @@ class Routine:
 
         self.place_ligands()
 
-        self.relax()
+        #self.relax()
 
         self.add_constraints()
 
         self.make_options_file()
 
-        self.dock()
+        #self.dock()
+
+        self.evaluate_constraints()
+
+        #TODO(CJ): this is where the QM would happen I believe
 
         self.report_and_cleanup()
+
+
+    def evaluate_constraints(self):
+        """ """
+        docked:List[Path] = (Path(self.work_dir)/'complexes').glob('rc_csts_????.pdb')
+
+        mapper = dict()        
+        for dd in docked:
+            for cst in self.constraints:
+                differences:List[float] = cst.evaluate(str(dd))
+                total = 0
+                for var in differences:
+                    if var >= 1:
+                        total += var 
+                mapper[dd.stem] = total 
+
+        #TODO(CJ): do something with this filename
+        json.dump(
+            mapper,
+            open(f"{self.work_dir}/constraint_eval.json", "w"),
+            indent=4,
+            sort_keys=True
+        )
+
+
+        #exit( 1 )
+
 
     def report_and_cleanup(self) -> None:
         """Ending function of the routine. Logs results, time and 
@@ -110,7 +142,10 @@ class Routine:
         """
         #TODO(CJ): this is the part where I will check if the constraints are
         # actually satisfied
-        score_csv: str = log_results(self.score_file, self.top_n)
+        mapper = json.load(open(f"{self.work_dir}/constraint_eval.json", "r"))
+
+        score_csv: str = log_results(mapper, self.score_file, self.top_n)
+        exit( 0 )
         handle_temp_files(self, self.l1_fm,
                           self.l2_fm if self.ligand_2 else None)
         log_elapsed_time(self)
@@ -180,7 +215,7 @@ class Routine:
 
         fs.write_lines(fname, content)
 
-        fs.safe_rmdir(f"{work_dir}/complexes/")
+        #fs.safe_rmdir(f"{work_dir}/complexes/") TODO(CJ): this should be impacted by the cache
         fs.safe_mkdir(f"{work_dir}/complexes/")
 
         self.score_file: str = f"{work_dir}/complexes/score.sc"
@@ -989,10 +1024,11 @@ def log_elapsed_time(params: Routine) -> None:
     )
 
 
-def log_results(score_file: str, top_n: int) -> str:
+def log_results(eval_dict, score_file: str, top_n: int) -> str:
     """ """
     df: pd.DataFrame = eh.interface.rosetta.parse_score_file(score_file)
     #show top 5
+    df['eval_score'] = df.apply(lambda row: eval_dict[row.description], axis=1 )
     df.sort_values(by='total_score', inplace=True)
     df.reset_index(drop=True, inplace=True)
     idx = min(top_n, len(df))
