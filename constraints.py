@@ -81,6 +81,7 @@ class RosettaCst:
             cst_type:str = cst[0]
             target = cst[1]
             tolerance = cst[2]
+            #TODO(CJ): need to check if the angle is weird for this
 
             if cst_type.startswith('distance'):
                 sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
@@ -96,10 +97,9 @@ class RosettaCst:
                     sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
                     sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
                     sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
-                assert False
-                args.append(
-                    ('angle', sele1, sele2, sele3)
-                )
+                angle:float = eh.interface.pymol.execute([('angle', sele1, sele2, sele3)])
+                differences.append( abs(dist-target)/tolerance )
+
             elif cst_type.startswith('dihedral'):
                 if cst_type == 'torsionA':
                     sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[2]}"

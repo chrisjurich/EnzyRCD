@@ -58,6 +58,7 @@ class Routine:
         self.cst_file = str()
         self.score_file = str()
         self.option_file = str()
+        self.json_file = str()
 
         allowed_keywords: List[
             str] = 'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling use_cache'.split(
@@ -90,13 +91,13 @@ class Routine:
 
         self.place_ligands()
 
-        #self.relax()
+        self.relax()
 
         self.add_constraints()
 
         self.make_options_file()
 
-        #self.dock()
+        self.dock()
 
         self.evaluate_constraints()
 
@@ -119,16 +120,16 @@ class Routine:
                         total += var 
                 mapper[dd.stem] = total 
 
-        #TODO(CJ): do something with this filename
+
+        self.json_file = f"{self.work_dir}/constraint_eval.json"
         json.dump(
             mapper,
-            open(f"{self.work_dir}/constraint_eval.json", "w"),
+            open(self.json_file, "w"),
             indent=4,
             sort_keys=True
         )
 
 
-        #exit( 1 )
 
 
     def report_and_cleanup(self) -> None:
@@ -142,7 +143,7 @@ class Routine:
         """
         #TODO(CJ): this is the part where I will check if the constraints are
         # actually satisfied
-        mapper = json.load(open(f"{self.work_dir}/constraint_eval.json", "r"))
+        mapper = json.load(open(self.json_file, "r"))
 
         score_csv: str = log_results(mapper, self.score_file, self.top_n)
         exit( 0 )
@@ -215,7 +216,8 @@ class Routine:
 
         fs.write_lines(fname, content)
 
-        #fs.safe_rmdir(f"{work_dir}/complexes/") TODO(CJ): this should be impacted by the cache
+        if not self.use_cache:
+            fs.safe_rmdir(f"{work_dir}/complexes/") 
         fs.safe_mkdir(f"{work_dir}/complexes/")
 
         self.score_file: str = f"{work_dir}/complexes/score.sc"
@@ -233,6 +235,8 @@ class Routine:
         os.chdir(self.work_dir)
         eh.interface.rosetta.run_rosetta_scripts([f"@{self.option_file}"])
         os.chdir(start_dir)
+        #TODO(CJ): should get the dataframe at this point so that the 
+        # constraint evaluation isn't hard coded
 
     def place_ligands(self) -> str:
         """Method that places the respective ligands in the structure
@@ -1031,6 +1035,8 @@ def log_results(eval_dict, score_file: str, top_n: int) -> str:
     df['eval_score'] = df.apply(lambda row: eval_dict[row.description], axis=1 )
     df.sort_values(by='total_score', inplace=True)
     df.reset_index(drop=True, inplace=True)
+    print(df)
+    exit( 1 )
     idx = min(top_n, len(df))
     eh.core._LOGGER.info(f"EnzyRCD run complete. Top {idx} structures are:")
     eh.core._LOGGER.info(f"No. \t    REU\t Structure")
