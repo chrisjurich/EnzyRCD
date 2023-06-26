@@ -38,23 +38,97 @@ class RosettaCst:
 
 
     def set(self, key:str, value: Any) -> None:
-        """
+        """Sets an attribute specified by the 'key' to the given 'value'. No checks are performed
+        on the supplied value.
+
+        Args:
+            key: The str() name of the attribute to change.
+            value: What you want to set the attribute to.
+
+        Returns:
+            Nothing.
+
+        Raises:
+            KeyError() if the supplied attribute does not exist. 
         """
         if key not in self.__dict__:
-            assert False
+            raise KeyError(f"{key} is not in the constraint")
 
         self.__dict__[key] = value
 
 
-    def satisfied(self, file:str) -> bool:
+    def evaluate(self, file:str) -> List[float]:
         """ 
+
+        Args:
+            file: Name of the file to analyze.
+
+        Returns:
+            
         """
-        pass
+        eh.interface.pymol.execute([
+            ('delete','all'),
+            ('load', file)
+        ])
+
+        sele1, sele2, sele3, sele4 = None, None, None, None
+
+        args:List[Tuple] = list()
+        
+        for cst in self.constraints:
+            #TODO(CJ): do a tuple expansion here
+            cst_type:str = cst[0]
+
+            if cst_type.startswith('distance'):
+                sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
+                sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
+                args.append(
+                    ('distance', sele1, sele2)
+                )
+            elif cst_type.startswith('angle'):
+                if cst_type == 'angleA':
+                    sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[1]}"
+                    sele2 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
+                    sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
+                elif cst_type == 'angleB':
+                    sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
+                    sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
+                    sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
+                args.append(
+                    ('angle', sele1, sele2, sele3)
+                )
+            elif cst_type.startswith('dihedral'):
+                if cst_type == 'torsionA':
+                    sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[2]}"
+                    sele2 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[1]}"
+                    sele3 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
+                    sele4 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
+                elif cst_type == 'torsionAB':
+                    sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[1]}"
+                    sele2 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
+                    sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
+                    sele4 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
+                elif cst_type == 'torsionB':
+                    sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
+                    sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
+                    sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
+                    sele4 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[2]}"
+                args.append(
+                    ('dihedral', sele1, sele2, sele3, sele4 )
+                )
+
+        result:List[float] = eh.interface.pymol.execute(args)
 
     def contains(self, chain:str, res_num:int) -> bool:
-        """ """
-        #TODO(CJ): 
-        pass
+        """Does the constraint contain the residue at <chain>.<res_num>?"""
+        if chain == self.rchain_1 and res_num == self.rnum_1:
+            return True
+
+        if chain == self.rchain_2 and res_num == self.rnum_2:
+            return True
+
+        return False
+
 
 
 def validate_cst(start: Union[str, Path, pd.DataFrame],
@@ -169,7 +243,16 @@ def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
 
 
 def parse_constraints(raw:str) -> List[RosettaCst]:
-    """
+    """Method that parses a raw str() into a list() of RosettaCst objects(). Allows for the input
+    to be either an actual str() or the path of a file containing constraints. On errors or bad input,
+    primarily returns an empty list().
+    TODO(CJ): add some kind of documentation on Constraints
+
+    Args:
+        raw: The constraints raw str() or path to a file containing constraints.
+
+    Returns:
+        A list() of validated RosettaCst()
 
     """
     result: List[RosettaCst] = list()
@@ -190,7 +273,7 @@ def parse_constraints(raw:str) -> List[RosettaCst]:
         content: str = raw 
         if not content:
             eh.core._LOGGER.warning(
-                "The supplied argument for --constraints is empty. Continuing..."
+                "The supplied constraints str is empty and is likely not a file. Continuing..."
             )
             return result
 
