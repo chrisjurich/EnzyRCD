@@ -194,10 +194,10 @@ class Routine:
         if self.ligand_2:
             selected_protocol += "2_ligands.xml"
             nbr_2:int=num_rotatable_bonds(self.ligand_2)
-            nstruct:int = max(nbr_1*nbr_2*10,100)
+            nstruct:int = max(nbr_1*nbr_2*10, 500)
         else:
             selected_protocol += "1_ligand.xml"
-            nstruct:int = max(nbr_1*20,100)
+            nstruct:int = max(nbr_1*20, 500)
         
 
         content.extend([
@@ -216,8 +216,7 @@ class Routine:
 
         fs.write_lines(fname, content)
 
-        if not self.use_cache:
-            fs.safe_rmdir(f"{work_dir}/complexes/") 
+        fs.safe_rmdir(f"{work_dir}/complexes/") 
         fs.safe_mkdir(f"{work_dir}/complexes/")
 
         self.score_file: str = f"{work_dir}/complexes/score.sc"
@@ -240,14 +239,6 @@ class Routine:
 
     def place_ligands(self) -> str:
         """Method that places the respective ligands in the structure
-
-        Arguments:
-            stru_file:
-            self:
-
-        Returns:
-            A str() with the name of file you 
-
         """
         #TODO(CJ): need to adjust grid search size based on how confidently
         # we can place the ligands.
@@ -409,7 +400,7 @@ class Routine:
         """Method that checks if the bare polypeptide chain has a RosettaEnergy <= 0.0. Disregards
         ligands. If polypeptide chain RosettaEnergy > 0, tries a simplistic relaxation that mainly
         targets replusion energy in Rosetta."""
-        eflags=['-extra_res_fa', str(self.l1_fm['self'])]
+        eflags=['-in:auto_setup_metals','-extra_res_fa', str(self.l1_fm['self'])]
         if self.ligand_2:
             eflags.append(str(self.l2_fm['self']))
 

@@ -86,18 +86,18 @@ class RosettaCst:
             if cst_type.startswith('distance'):
                 sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
                 sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
-                dist:float = eh.interface.pymol.execute( [('distance', sele1, sele2)] )[0]
+                dist:float = eh.interface.pymol.execute( [('distance', None, sele1, sele2)] )[0]
                 differences.append( abs(dist - target ) / tolerance) 
             elif cst_type.startswith('angle'):
-                if cst_type == 'angleA':
+                if cst_type == 'angle_A':
                     sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[1]}"
                     sele2 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
                     sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
-                elif cst_type == 'angleB':
+                elif cst_type == 'angle_B':
                     sele1 = f"chain {self.rchain_1} and resi {self.rnum_1} and name {self.ratoms_1[0]}"
                     sele2 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[0]}"
                     sele3 = f"chain {self.rchain_2} and resi {self.rnum_2} and name {self.ratoms_2[1]}"
-                angle:float = eh.interface.pymol.execute([('angle', sele1, sele2, sele3)])
+                angle:float = eh.interface.pymol.execute([('angle', None, sele1, sele2, sele3)])[0]
                 differences.append( abs(dist-target)/tolerance )
 
             elif cst_type.startswith('dihedral'):
