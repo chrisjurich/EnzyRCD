@@ -59,6 +59,7 @@ class Routine:
         self.score_file = str()
         self.option_file = str()
         self.json_file = str()
+        self.results:pd.DataFrame=None
 
         allowed_keywords: List[
             str] = 'structure mutations pH conformer_engine n_conformers ligand_1 ligand_2 constraints n_structures protonate_structure work_dir top_n temp_handling use_cache'.split(
@@ -133,14 +134,7 @@ class Routine:
 
 
     def report_and_cleanup(self) -> None:
-        """Ending function of the routine. Logs results, time and 
-
-        Args:
-            self: The Routine() class.
-
-        Returns:
-            Nothing.
-        """
+        """ """
         #TODO(CJ): this is the part where I will check if the constraints are
         # actually satisfied
         mapper = json.load(open(self.json_file, "r"))
@@ -234,6 +228,7 @@ class Routine:
         os.chdir(self.work_dir)
         eh.interface.rosetta.run_rosetta_scripts([f"@{self.option_file}"])
         os.chdir(start_dir)
+        self.results = eh.interface.rosetta.parse_score_file(self.score_file)
         #TODO(CJ): should get the dataframe at this point so that the 
         # constraint evaluation isn't hard coded
 

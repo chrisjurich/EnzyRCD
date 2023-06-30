@@ -187,11 +187,23 @@ def validate_cst(start: Union[str, Path, pd.DataFrame],
         exit(1)
 
 
-def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
-    """Takes raw constraints and converts them into RosettaCst() namedtuple()'s,  
-    
+def read_cst(raw: str) -> List[RosettaCst]:
+    """Takes a raw constraint and converts it into a RosettaCst object. This is a modified version of the information
+    required to create an enzyme constraint in Rosetta, with the exception that some parameters for distance and angle
+    constraints can be ommitted. Each constraint is converted into a single constraint block in the Rosetta constraint
+    system. Consider the below example:
+
+    Residue 1: Chain A, ResNum 1, ResName L01, Atoms A1 A2 A3
+    Residue 2: Chain B, ResNum 2, ResName L02, Atoms A4 A5 A6
+
+    FormattedCst:
+
+    (A,1,L01,A1,A2,A3)(B,2,L02,A4,A5,A6)(distanceAB,2.00)(angle_A,180.00)(angle_B)
+   
+
+
     Args:
-        raw:
+        raw: 
 
     Returns:
         A list of RosettaCst() namedtuple()'s.
@@ -219,44 +231,55 @@ def parse_rosetta_cst(raw: str) -> List[RosettaCst]:
             var[f"rname_{tidx+1}"] = spl[2]
             var[f"ratoms_{tidx+1}"] = spl[3:]
         else:
-            if spl[0] not in ALLOWED_CSTS:
+            cst_type:str=spl[0]
+            if cst_type not in ALLOWED_CSTS:
                 eh.core._LOGGER.error(
-                    f"The supplied constraint type {spl[0]} is not supported. Allowed are: {', '.join(sorted(list(ALLOWED_CSTS)))}. Exiting..."
+                    f"The supplied constraint type {cst_type} is not supported. Allowed are: {', '.join(sorted(list(ALLOWED_CSTS)))}. Exiting..."
                 )
                 exit(1)
-
-            temp = [spl[0]]
+            
+            temp = [cst_type]
+            
             for tt in spl[1:]:
                 if tt.find('.') == -1:
                     temp.append(int(tt))
                 else:
                     temp.append(float(tt))
+            
+            t_len:int=len(temp)
+
+            if t_len < 5:
+
+                #TODO(CJ): add in some discussion of using a database here
+                # and mention that we are using default parameters
+                if cst_type == 'distanceAB':
+                    temp.extend(
+                        [2.00,0.25,1000.00,0][t_len-1:]
+                    )
+                elif cst_type in 'angle_A angle_B'.split():
+                    temp.extend(
+                        [180.0,5.0,1000.0,360.0,1][t_len-1:]
+                    )
+
+                else:
+                    raise TypeError()
 
             var['constraints'].append(temp)
     
-    return RosettaCst(rname_1=var['rname_1'],
-                      rnum_1=var['rnum_1'],
-                      ratoms_1=var['ratoms_1'],
-                      rchain_1=var['rchain_1'],
-                      rname_2=var['rname_2'],
-                      rnum_2=var['rnum_2'],
-                      ratoms_2=var['ratoms_2'],
-                      rchain_2=var['rchain_2'],
-                      constraints=var['constraints'])
+    return RosettaCst(**var)
 
 
 
 def parse_constraints(raw:str) -> List[RosettaCst]:
     """Method that parses a raw str() into a list() of RosettaCst objects(). Allows for the input
     to be either an actual str() or the path of a file containing constraints. On errors or bad input,
-    primarily returns an empty list().
-    TODO(CJ): add some kind of documentation on Constraints
+    primarily returns an empty list(). 
 
     Args:
         raw: The constraints raw str() or path to a file containing constraints.
 
     Returns:
-        A list() of validated RosettaCst()
+        A list() of validated RosettaCst().
 
     """
     result: List[RosettaCst] = list()
@@ -287,7 +310,7 @@ def parse_constraints(raw:str) -> List[RosettaCst]:
         if chunk[-1] != ')':
             chunk += ')'
 
-        result.append(parse_rosetta_cst(chunk))
+        result.append(read_cst(chunk))
 
     return result
 
