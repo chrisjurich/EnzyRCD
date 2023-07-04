@@ -1,0 +1,6 @@
+#!/usr/bin/env bash 
+python $DATA/EnzyRCD/EnzyRCD             "./production.pdb"                \
+                --pH 7.60                                           \
+                --constraints "./constraints.txt"                   \
+                --work_dir "./"                                     \
+                --use_cache
