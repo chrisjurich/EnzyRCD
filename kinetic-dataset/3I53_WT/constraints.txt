@@ -1,2 +1,2 @@
-(A,246,HIS,NE2,CD2,CG)(Z,1,L02,H1J,O1J,C1M)(distanceAB,3.00,0.3,1000.00,0),
-(Y,1,L01,CE,SD,C5)(Z,1,L02,O1J,C1M,C1I)(distanceAB,2.00,0.3,1000.00,0)
+(A,246,HIS,NE2,CD2,CG)(Z,1,L02,H1J,O1J,C1M)(distanceAB)(angle_A,120.0)(angle_B,109.2),
+(Y,1,L01,CE,SD,C5)(Z,1,L02,O1J,C1M,C1I)(distanceAB)(angle_A,180.0)(angle_B,109.2)
