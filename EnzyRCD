@@ -571,8 +571,9 @@ class Routine:
                     )
                 
                 if cst.rchain_2 == 'Z':
+                    #TODO(CJ): check for remapping/that it actually exists
                     self.constraints[cidx].set(
-                        'ratoms_2',  list(map(lambda kk: l2_atom_mapper[kk], cst.ratoms_2))
+                        'ratoms_2',  list(map(lambda kk: l2_atom_mapper.get(kk,kk), cst.ratoms_2))
                     )
 
 
