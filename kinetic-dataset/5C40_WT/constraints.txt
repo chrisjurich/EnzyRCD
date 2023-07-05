@@ -1,2 +1,2 @@
-(Z,1,RIB,O5,C5,C4)(Y,1,ATP,PG,O3B,PB)(distanceAB,2.00,0.20,1000.00,0),
-(Z,1,RIB,HO5,O5,C5)(A,269,ASP,OD2,CB,CG)(distanceAB,3.00,0.3,1000.00,0,0)
+(Z,1,RIB,O5,C5,C4)(Y,1,ATP,PG,O3B,PB)(distanceAB)(angle_A,109.2)(angle_B,180.0),
+(Z,1,RIB,HO5,O5,C5)(A,269,ASP,OD2,CB,CG)(distanceAB)(angle_A,109.2)(angle_B,180.0)

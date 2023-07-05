@@ -1,1 +1,2 @@
-(Z,1,L02,H18,O9,C10)(A,392,ASP,OD2,CG,CB)(distanceAB,3.00,0.30,1000.00,0)
+(Z,1,L02,H18,O9,C10)(A,392,ASP,OD2,CG,CB)(distanceAB)(angle_A,109.2)(angle_B,180.0),
+(Y,1,L01,C1,C2,C3)(Z,1,L02,O9,C10,C11)(distanceAB)(angle_A,109.2)(angle_B,109.2)

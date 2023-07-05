@@ -1,5 +1,5 @@
 #!/usr/bin/env bash 
-~/projects/EnzyRCD/EnzyRCD             "./production.pdb"           \
+python $DATA/EnzyRCD/EnzyRCD             "./production.pdb"           \
                 --pH 8.0                                            \
                 --constraints "./constraints.txt"                   \
                 --work_dir "./"                                     \
